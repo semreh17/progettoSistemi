@@ -1,0 +1,4 @@
+/home/semreh_17/software/CLionProjects/starterKit/build/CMakeFiles/MultiPandOS.dir
+/home/semreh_17/software/CLionProjects/starterKit/build/CMakeFiles/MultiPandOSuRISCV.dir
+/home/semreh_17/software/CLionProjects/starterKit/build/CMakeFiles/edit_cache.dir
+/home/semreh_17/software/CLionProjects/starterKit/build/CMakeFiles/rebuild_cache.dir
