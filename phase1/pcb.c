@@ -70,6 +70,21 @@ pcb_t* removeProcQ(struct list_head* head) {
 }
 
 pcb_t* outProcQ(struct list_head* head, pcb_t* p) {
+    int flag=0;
+    struct list_head* iter;
+    list_for_each(iter,head) {
+        if(iter == p){
+            flag=1;
+
+        }
+    }
+    
+    if (flag) { 
+        list_del(&p);
+        return p; 
+        }
+
+    else return NULL;
 }
 
 int emptyChild(pcb_t* p) {
