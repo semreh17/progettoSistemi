@@ -62,9 +62,9 @@ pcb_t* headProcQ(struct list_head* head) {
 }
 
 pcb_t* removeProcQ(struct list_head* head) {
-    if (emptyProcQ(head)) return NULL;
+    if (emptyProcQ(&head)) return NULL;
     struct list_head* p = head;
-    list_del(head);
+    list_del(&head);
     // devo passargli il pcb? Oppure il list_head che lo punta, boh
     return container_of(p, pcb_t, p_list);
 }
@@ -73,12 +73,28 @@ pcb_t* outProcQ(struct list_head* head, pcb_t* p) {
 }
 
 int emptyChild(pcb_t* p) {
+
+    if (list_empty(&p)) {
+        return TRUE;                    //se la lista è vuota return TRUE
+    }
+    else return FALSE;   
 }
 
 void insertChild(pcb_t* prnt, pcb_t* p) {
+
+    list_add_tail(&p, &prnt->p_child);         //aggiunge p alla lista p_child di prnt
+
 }
 
 pcb_t* removeChild(pcb_t* p) {
+    struct list_head *first_child=p->p_child.next;
+     if (list_empty(&p->p_child)) {
+        return NULL;                    //se la lista dei children è vuota return NULL
+    }
+    
+    else {
+        list_del(&first_child);         //elimina 
+    }
 }
 
 pcb_t* outChild(pcb_t* p) {
