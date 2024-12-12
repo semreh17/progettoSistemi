@@ -5,15 +5,47 @@ static pcb_t pcbFree_table[MAXPROC];
 static int next_pid = 1;
 
 void initPcbs() {
+    INIT_LIST_HEAD(&pcbFree_h); // Inizializza la lista come vuota
+    for (int i = 0; i < MAXPROC; i++) {
+        list_add_tail(&pcbFree_table[i].p_list, &pcbFree_h); // Aggiunge i PCB nella coda della lista
+    }
 }
 
 void freePcb(pcb_t* p) {
+    if (p != NULL) {
+        list_add_tail(&p->p_list, &pcbFree_h); // Inserisce in coda alla lista dei processi liberi
+    }
 }
 
 pcb_t* allocPcb() {
+    if (list_empty(&pcbFree_h)) {
+        return NULL; // controlla che ci siano dei PCBs dispondibili
+    }
+
+    
+    struct list_head* first_pcb = pcbFree_h.next;
+    list_del(first_pcb); // prende e rimuove dalla lista il primo elemento
+
+    pcb_t* pcb = container_of(first_pcb, pcb_t, p_list); // Ottieni il PCB corrispondente
+    
+    
+        //inizializzazione di tutti i campi a "NULL"
+    pcb->p_parent = NULL;         
+    INIT_LIST_HEAD(&pcb->p_child); 
+    INIT_LIST_HEAD(&pcb->p_sib);   
+    pcb->p_supportStruct = NULL;   
+    pcb->p_semAdd = NULL;
+           
+    pcb->p_pid = next_pid;
+    next_pid++;       
+    pcb->p_time = 0;               
+    return pcb;
 }
 
 void mkEmptyProcQ(struct list_head* head) {
+
+    INIT_LIST_HEAD(&head);             //head->next/previous= head
+    
 }
 
 int emptyProcQ(struct list_head* head) {
