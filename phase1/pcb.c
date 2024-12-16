@@ -113,4 +113,15 @@ pcb_t* removeChild(pcb_t* p) {
 }
 
 pcb_t* outChild(pcb_t* p) {
+    if (p->p_parent == NULL) {
+        return NULL;
+    }
+
+    list_del(&p->p_sib);
+    
+    p->p_parent = NULL;
+
+    return p;
+
+
 }
