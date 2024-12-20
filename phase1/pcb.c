@@ -22,14 +22,12 @@ pcb_t* allocPcb() {
         return NULL; // controlla che ci siano dei PCBs dispondibili
     }
 
-    
     struct list_head* first_pcb = pcbFree_h.next;
     list_del(first_pcb); // prende e rimuove dalla lista il primo elemento
 
     pcb_t* pcb = container_of(first_pcb, pcb_t, p_list); // Ottieni il PCB corrispondente
     
-    
-        //inizializzazione di tutti i campi a "NULL"
+    //inizializzazione di tutti i campi a "NULL"
     pcb->p_parent = NULL;         
     INIT_LIST_HEAD(&pcb->p_child); 
     INIT_LIST_HEAD(&pcb->p_sib);   
@@ -43,9 +41,7 @@ pcb_t* allocPcb() {
 }
 
 void mkEmptyProcQ(struct list_head* head) {
-
-    INIT_LIST_HEAD(&head);             //head->next/previous= head
-    
+    INIT_LIST_HEAD(head);             //head->next/previous= head
 }
 
 int emptyProcQ(struct list_head* head) {
@@ -53,7 +49,7 @@ int emptyProcQ(struct list_head* head) {
 }
 
 void insertProcQ(struct list_head* head, pcb_t* p) {
-    list_add_tail(p, head);
+    list_add_tail(&p->p_list, head);
 }
 
 pcb_t* headProcQ(struct list_head* head) {
@@ -84,25 +80,23 @@ pcb_t* outProcQ(struct list_head* head, pcb_t* p) {
 }
 
 int emptyChild(pcb_t* p) {
-
-    if (list_empty(&p)) {
-        return TRUE;                    //se la lista è vuota return TRUE
+    if (list_empty(&p->p_list)) {
+        return TRUE;
     }
     else return FALSE;   
 }
 
 void insertChild(pcb_t* prnt, pcb_t* p) {
-
-    list_add_tail(&p->p_list, &prnt->p_child);         //aggiunge p alla lista p_child di prnt
-
+    list_add_tail(&p->p_list, &prnt->p_child);
 }
 
 pcb_t* removeChild(pcb_t* p) {
-    struct list_head *first_child=p->p_child.next;
+    struct list_head *first_child = p->p_child.next;
      if (list_empty(&p->p_child)) {
-        return NULL;                    //se la lista dei children è vuota return NULL
+        return NULL;
     } else {
-        list_del(&first_child);         //elimina
+        list_del(first_child);
+        return container_of(first_child, pcb_t, p_list);
     }
 }
 
@@ -116,6 +110,4 @@ pcb_t* outChild(pcb_t* p) {
     p->p_parent = NULL;
 
     return p;
-
-
 }
