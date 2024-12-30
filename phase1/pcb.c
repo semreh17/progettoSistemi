@@ -86,8 +86,13 @@ int emptyChild(pcb_t* p) {
     else return FALSE;   
 }
 
+// should be right
 void insertChild(pcb_t* prnt, pcb_t* p) {
-    list_add_tail(&p->p_list, &prnt->p_child);
+    if (emptyChild(prnt)) {
+        INIT_LIST_HEAD(&prnt->p_child);
+    }
+    list_add_tail(&p->p_sib, &prnt->p_child);
+    p->p_parent = prnt;
 }
 
 pcb_t* removeChild(pcb_t* p) {
