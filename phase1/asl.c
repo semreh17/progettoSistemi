@@ -66,7 +66,7 @@ pcb_t* removeBlocked(int* semAdd) {
     
     if (list_empty(&this_sem->s_procq)) {  
                                                             
-        list_del(&this_sem->s_link);                        // Se la porcq del semaforo è vuota ( cioè abbiamo eliminato l'ultimo pcb)
+        list_del(&this_sem->s_link);                        // Se la procq del semaforo è vuota ( cioè abbiamo eliminato l'ultimo pcb)
                                                             // remove the semaphore descriptor from the ASL
         list_add(&this_sem->s_link, &semdFree_h);           // and return it to the semdFree list.
     }
