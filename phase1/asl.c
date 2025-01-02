@@ -22,12 +22,19 @@ void initASL() {
  *  of the process queue associated with the semaphore.
  */
 int insertBlocked(int* semAdd, pcb_t* p) {
-    semd_t actualSem = semd_table[*semAdd]; //semd_table è array statico di grandezza maxproc, non capisco come potrebbe funzionare 
+    // semd_t actualSem = semd_table[*semAdd]; //semd_table è array statico di grandezza maxproc, non capisco come potrebbe funzionare
+    semd_t actualSem;
+    // searching for the semaphore, with semAdd key, inside the array of semaphores
+    for (int i = 0; i < MAXPROC; i++) {
+        if (*semd_table[i].s_key == *semAdd) { // not sure if "*" operator is needed, but i actually need to check the value inside the memory cell
+            actualSem = semd_table[i];
+        }
+    }
     if (emptyProcQ(&actualSem.s_procq)) {   //mettere come indice *semAdd che probabilmente è una cella di memoria tipo Ax542rD_some_shit_65RtF$
         if (list_empty(&semdFree_h)) {
             return TRUE;
         }
-        
+        // okay maybe the contaierOf is not necessary
         semd_t *newSem = container_of(&semdFree_h, semd_t, s_link);  //perchè container_of? il newSem è un elemento della lista semdFree_h
         list_del(semdFree_h.next);
 
@@ -79,6 +86,9 @@ pcb_t* outBlockedPid(int pid) {
 }
 
 pcb_t* outBlocked(pcb_t* p) {
+    list_for_each_entry() {
+
+    }
 }
 
 pcb_t* headBlocked(int* semAdd) {
