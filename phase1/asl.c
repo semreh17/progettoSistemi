@@ -86,9 +86,43 @@ pcb_t* outBlockedPid(int pid) {
 }
 
 pcb_t* outBlocked(pcb_t* p) {
-    list_for_each_entry() {
-
+    if (p == NULL || p->p_semAdd == NULL) {
+        return NULL;
     }
+
+    semd_t *this_sem;
+
+    list_for_each_entry(this_sem, &semd_h, s_link) {
+
+        if (this_sem->s_key == p->p_semAdd) {
+                                                        // if the semaphore is found we search for p in its procq
+            struct list_head *pos;
+            list_for_each(pos, &this_sem->s_procq) {
+
+                pcb_t *pbc_pointed_to_by_p = container_of(pos, pcb_t, p_list);
+
+                if (pbc_pointed_to_by_p == p) {
+                                                        // deletes the pbc from the queue and changes it's semAdd
+                    list_del(&p->p_list);
+                    p->p_semAdd = NULL;
+
+                    
+                    if (emptyProcQ(&this_sem->s_procq)) {  //exact same thing as last functions, deletes a semaphore if emtpy
+
+                        list_del(&this_sem->s_link);
+
+                        list_add_tail(&this_sem->s_link, &semdFree_h);
+                    }
+
+                    return p; 
+                }
+            }
+            
+            return NULL;                    // if the pcb isn't in the queue return NULL
+        }
+    }
+                                            // didn't find the semaphore int the ASL
+    return NULL;
 }
 
 pcb_t* headBlocked(int* semAdd) {
