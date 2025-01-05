@@ -6,10 +6,25 @@ static semd_t semd_table[MAXPROC];
 static struct list_head semdFree_h;
 static struct list_head semd_h;
 
+semd_t *Find_Semaphore(int *semAdd) {    //i decided to go for this one, could also make a Remove_Semaphore
+
+    semd_t *this_sem;
+
+    list_for_each_entry(this_sem, &semd_h, s_link) {
+
+        if (this_sem->s_key == semAdd) {
+
+            return this_sem; // return semaphore with semAdd key
+        }
+    }
+    return NULL; // semaphore not found
+}
+
+
 void initASL() {
     INIT_LIST_HEAD(&semdFree_h);
     //praticamente la stessa cosa di initPcbs()
-    for (int i = 0; i < MAXPROC; i++) {
+    for (int i = 0; i < MAXPROC; i++) {                     
         INIT_LIST_HEAD(&semd_table[i].s_procq);  
         list_add_tail(&semd_table[i].s_link, &semdFree_h);  
     }
@@ -24,7 +39,7 @@ void initASL() {
 int insertBlocked(int* semAdd, pcb_t* p) {
     // semd_t actualSem = semd_table[*semAdd]; //semd_table è array statico di grandezza maxproc, non capisco come potrebbe funzionare
     semd_t actualSem;
-    // searching for the semaphore, with semAdd key, inside the array of semaphores
+    // searching for the semaphore, with semAdd key, inside the array of semaphores [CAN USE FIND_SEMAPHORE]
     for (int i = 0; i < MAXPROC; i++) {
         if (*semd_table[i].s_key == *semAdd) { // not sure if "*" operator is needed, but i actually need to check the value inside the memory cell
             actualSem = semd_table[i];
@@ -52,23 +67,18 @@ int insertBlocked(int* semAdd, pcb_t* p) {
 
 //perdona il miscuglio di engl ed ita ma facevo copia e incolla dalle spec
 pcb_t* removeBlocked(int* semAdd) {
-    semd_t *this_sem;
 
-    list_for_each_entry(this_sem, &semd_h, s_link) {           // search the ASL for a descriptor of this semaphore.
-        if (this_sem->s_key == semAdd) {                       // questo pezzo serve per cercare un semaforo puntato da semAdd
-            break;                                             // nella ASL, fate copia ed incolla se e quando servirà per altro codice 
-        }
-    }
-    
+    semd_t *this_sem = findSemaphore(semAdd);
+
     if (this_sem->s_key != semAdd) {                            // se il semaforo non è trovato, restituisce NULL
         return NULL;
     }
 
-    struct list_head *first = this_sem->s_procq.next;    
+    struct list_head *pointer_to_pcb = this_sem->s_procq.next;    
     
-    list_del(first);                                           // rimuove il nodo dalla lista
+    list_del(pointer_to_pcb);                                           // rimuove il nodo dalla lista
 
-    pcb_t *removedPcb = container_of(first, pcb_t, p_list);
+    pcb_t *removedPcb = container_of(pointer_to_pcb, pcb_t, p_list);
 
     
     if (list_empty(&this_sem->s_procq)) {  
@@ -90,40 +100,56 @@ pcb_t* outBlocked(pcb_t* p) {
         return NULL;
     }
 
-    semd_t *this_sem;
+    semd_t *this_sem = findSemaphore(p->p_semAdd);
 
-    list_for_each_entry(this_sem, &semd_h, s_link) {
+    if(this_sem==NULL){
+        return NULL;
+    }
+                                                        
+    struct list_head *pos;                         // if the semaphore is found we search for p in its procq
+    list_for_each(pos, &this_sem->s_procq) {
 
-        if (this_sem->s_key == p->p_semAdd) {
-                                                        // if the semaphore is found we search for p in its procq
-            struct list_head *pos;
-            list_for_each(pos, &this_sem->s_procq) {
+        pcb_t *pbc_pointed_to_by_p = container_of(pos, pcb_t, p_list);
 
-                pcb_t *pbc_pointed_to_by_p = container_of(pos, pcb_t, p_list);
+        if (pbc_pointed_to_by_p == p) {            // deletes the pbc from the queue and changes it's semAdd
+                                                        
+            list_del(&p->p_list);
+            p->p_semAdd = NULL;
+  
+            if (emptyProcQ(&this_sem->s_procq)) {  //exact same thing as last functions, deletes a semaphore if emtpy
 
-                if (pbc_pointed_to_by_p == p) {
-                                                        // deletes the pbc from the queue and changes it's semAdd
-                    list_del(&p->p_list);
-                    p->p_semAdd = NULL;
+                list_del(&this_sem->s_link);
 
-                    
-                    if (emptyProcQ(&this_sem->s_procq)) {  //exact same thing as last functions, deletes a semaphore if emtpy
-
-                        list_del(&this_sem->s_link);
-
-                        list_add_tail(&this_sem->s_link, &semdFree_h);
-                    }
-
-                    return p; 
-                }
+                list_add_tail(&this_sem->s_link, &semdFree_h);
             }
-            
-            return NULL;                    // if the pcb isn't in the queue return NULL
+
+            return p; 
         }
     }
-                                            // didn't find the semaphore int the ASL
-    return NULL;
+            
+    return NULL;                    // if the pcb isn't in the queue return NULL
 }
 
+
 pcb_t* headBlocked(int* semAdd) {
+
+    semd_t *this_sem = findSemaphore(semAdd);
+    
+    if (!this_sem) {
+        
+        return NULL;   
+    }
+
+    if (list_empty(&this_sem->s_procq)) {
+        
+        return NULL;                    //if the procq is empty then there's no pcbs to look for, although the function doesn't say
+                                        //to eliminate the semaphore from the ASL like the others
+    }
+
+    struct list_head *pointer_to_pcb = this_sem->s_procq.next;           // Return the PCB at the head of the process queue
+    return container_of(pointer_to_pcb, pcb_t, p_list);
 }
+
+
+    
+
