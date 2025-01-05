@@ -6,7 +6,7 @@ static semd_t semd_table[MAXPROC];
 static struct list_head semdFree_h;
 static struct list_head semd_h;
 
-semd_t *Find_Semaphore(int *semAdd) {    //i decided to go for this one, could also make a Remove_Semaphore
+semd_t *findSemaphore(int *semAdd) {    //i decided to go for this one, could also make a Remove_Semaphore
 
     semd_t *this_sem;
 
@@ -93,6 +93,7 @@ pcb_t* removeBlocked(int* semAdd) {
 }
 
 pcb_t* outBlockedPid(int pid) {
+    return NULL;
 }
 
 pcb_t* outBlocked(pcb_t* p) {
@@ -145,7 +146,6 @@ pcb_t* headBlocked(int* semAdd) {
         return NULL;                    //if the procq is empty then there's no pcbs to look for, although the function doesn't say
                                         //to eliminate the semaphore from the ASL like the others
     }
-
     struct list_head *pointer_to_pcb = this_sem->s_procq.next;           // Return the PCB at the head of the process queue
     return container_of(pointer_to_pcb, pcb_t, p_list);
 }

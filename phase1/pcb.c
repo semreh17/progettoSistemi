@@ -80,10 +80,7 @@ pcb_t* outProcQ(struct list_head* head, pcb_t* p) {
 }
 
 int emptyChild(pcb_t* p) {
-    if (list_empty(&p->p_list)) {
-        return TRUE;
-    }
-    else return FALSE;   
+    return list_empty(&p->p_child);
 }
 
 // should be right
@@ -91,8 +88,8 @@ void insertChild(pcb_t* prnt, pcb_t* p) {
     if (emptyChild(prnt)) {
         INIT_LIST_HEAD(&prnt->p_child);
     }
-    list_add_tail(&p->p_sib, &prnt->p_child);
     p->p_parent = prnt;
+    list_add_tail(&p->p_sib, &prnt->p_child);
 }
 
 pcb_t* removeChild(pcb_t* p) {
