@@ -1,19 +1,17 @@
 #include "./headers/asl.h"
-
 #include "headers/pcb.h"
 
 static semd_t semd_table[MAXPROC];
 static struct list_head semdFree_h;
 static struct list_head semd_h;
 
-semd_t *findSemaphore(int *semAdd) {    //i decided to go for this one, could also make a Remove_Semaphore
+semd_t *findSemaphore(int *semAdd) {    //i decided to go for this one, could also make a RemoveSemaphore
 
     semd_t *this_sem;
 
     list_for_each_entry(this_sem, &semd_h, s_link) {
 
         if (this_sem->s_key == semAdd) {
-
             return this_sem; // return semaphore with semAdd key
         }
     }
@@ -37,31 +35,34 @@ void initASL() {
  *  of the process queue associated with the semaphore.
  */
 int insertBlocked(int* semAdd, pcb_t* p) {
-    // semd_t actualSem = semd_table[*semAdd]; //semd_table è array statico di grandezza maxproc, non capisco come potrebbe funzionare
-    semd_t actualSem;
-    // searching for the semaphore, with semAdd key, inside the array of semaphores [CAN USE FIND_SEMAPHORE]
-    for (int i = 0; i < MAXPROC; i++) {
-        if (*semd_table[i].s_key == *semAdd) { // not sure if "*" operator is needed, but i actually need to check the value inside the memory cell
-            actualSem = semd_table[i];
-        }
-    }
-    if (emptyProcQ(&actualSem.s_procq)) {   //mettere come indice *semAdd che probabilmente è una cella di memoria tipo Ax542rD_some_shit_65RtF$
-        if (list_empty(&semdFree_h)) {
-            return TRUE;
-        }
-        // okay maybe the contaierOf is not necessary
-        semd_t *newSem = container_of(&semdFree_h, semd_t, s_link);  //perchè container_of? il newSem è un elemento della lista semdFree_h
-        list_del(semdFree_h.next);
+    semd_t *actualSem = findSemaphore(semAdd);
 
-        // passing the address of the list, so the new sem can be added to the tail
-        // then initializing the fields
-        list_add_tail(&newSem->s_link, &semd_h);
-        newSem->s_key = semAdd;
-        mkEmptyProcQ(&newSem->s_procq);
-
+    if (actualSem) {
+        // Semaphore exists, add PCB to its queue
         p->p_semAdd = semAdd;
-        list_add_tail(&p->p_list, &newSem->s_procq);
+        list_add_tail(&p->p_list, &actualSem->s_procq);
+        return FALSE;
     }
+
+    // Semaphore does not exist so create a new one
+    if (list_empty(&semdFree_h)) {
+        return TRUE; // No free semaphores available
+    }
+
+    // Allocate a semaphore from the free list
+    struct list_head *free_entry = semdFree_h.next;
+    list_del(free_entry);
+    semd_t *newSem = container_of(free_entry, semd_t, s_link);
+
+    // Initialize the new semaphore
+    list_add_tail(&newSem->s_link, &semd_h);
+    newSem->s_key = semAdd;
+    mkEmptyProcQ(&newSem->s_procq);
+
+    // Add the PCB to the new queue of semaphore
+    p->p_semAdd = semAdd;
+    list_add_tail(&p->p_list, &newSem->s_procq);
+
     return FALSE;
 }
 
