@@ -80,6 +80,6 @@ typedef struct semd_t {
 
     /* Semaphore list */
     struct list_head s_link;
-} semd_t, *semd_PTR;
+}   semd_t, *semd_PTR;
 
 #endif

@@ -1,0 +1,4 @@
+COMPONENTE:Matteo:Capponcelli:0001129366:matteo.capponcelli2@studio.unibo.it
+COMPONENTE:Mattia:Calzolari:0001117215:mattia.calzolari7@studio.unibo.it
+COMPONENTE:Alessandro:D'Ambrosio:0001099122:alessandro.dambrosi3@studio.unibo.it
+COMPONENTE:Hermes:Perra:0001117064:hermes.perra@studio.unibo.it
