@@ -1,20 +1,21 @@
-#include <stdint.h>
-#include <stdio.h>
 #include "../headers/types.h"
 #include "uriscv/types.h"
+#include "../headers/listx.h"
 #include "../headers/const.h"
 #include "../phase1/headers/asl.h"
 #include "../phase1/headers/pcb.h"
 #include "uriscv/liburiscv.h"
 
-extern int processCount; // started but not terminated process
-extern struct list_head readyQueue; // queue of PCB's in the ready state
+int processCount; // started but not terminated process
+struct list_head *readyQueue; // queue of PCB's in the ready state
 
-extern pcb_t *currentProcess[MAXPROC]; // vector of pointers to the PCB that is in the "running" state on each CPU
-static int globalLock;
+pcb_t *currentProcess[NCPU]; // vector of pointers to the PCB that is in the "running" state on each CPU
+volatile int globalLock;
 
+semd_t deviceSemaphores[NRSEMAPHORES];
 //device semaphores: two types semaphores, the first for each external device and the other to support the Pseudo-clock
 
+extern void test(); // function/proces to test the nucleus
 
 void uTLB_RefillHandler() {
     int prid = getPRID();
@@ -24,7 +25,7 @@ void uTLB_RefillHandler() {
     LDST(GET_EXCEPTION_STATE_PTR(prid));
 }
 
-void exceptionHandler() {} // placeholder to put in the exception file
+void exceptionHandler() {} // just a placeholder, has to be implemented
 
 void passupvectorInit() {
     passupvector_t *passup;
@@ -55,11 +56,44 @@ int main() {
     initASL();
 
     // 4.
+
+    globalLock = 1;
+    processCount = MAXPROC;
+    mkEmptyProcQ(readyQueue);
+    for (int i = 0; i < NCPU; i++) {
+        currentProcess[i] = allocPcb();
+    }
+
     /*
-     * processCount = 20
-     * readyQueue = LIST_HEAD_INIT(readyQueue)
-     * currentProcess has to be initialized all to 0
-     * deviceSemaphores (???)
-     * globalLOck = brother uhhhhhh?????
+       *
+       * deviceSemaphores (???)
+       *
+    */
+    for (int i = 0; i < NRSEMAPHORES; i++) {
+
+    }
+
+    // 5.
+    LDIT(PSECOND);
+
+    // 6.
+    /*
+     * probably not needed to set manually the tree fields to NULL since allocPcb() already does that
+     * actually it's not really needed to set anything to NULL/0 since allocPcb() does already everything
      */
+    pcb_t *kernel = allocPcb();
+    kernel->p_parent = NULL;
+    kernel->p_time = 0;
+    kernel->p_semAdd = NULL;
+    kernel->p_supportStruct = NULL;
+
+    // 7. uhhhhh????
+
+    // 8. uh?
+    for (int i = 0; i < NCPU - 1; i++) {
+
+    }
+
+
+
 }
