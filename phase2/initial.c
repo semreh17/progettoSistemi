@@ -5,25 +5,22 @@
 #include "../phase1/headers/asl.h"
 #include "../phase1/headers/pcb.h"
 #include "uriscv/liburiscv.h"
+#include "uriscv/arch.h"
+
+void *scheduler(); // placeholder for scheduler
 
 int processCount; // started but not terminated process
 struct list_head *readyQueue; // queue of PCB's in the ready state
 
-pcb_t *currentProcess[NCPU]; // vector of pointers to the PCB that is in the "running" state on each CPU
+struct pcb_t *currentProcess[NCPU]; // vector of pointers to the PCB that is in the "running" state on each CPU
 volatile int globalLock;
 
-semd_t deviceSemaphores[NRSEMAPHORES];
+struct semd_t deviceSemaphores[NRSEMAPHORES];
 //device semaphores: two types semaphores, the first for each external device and the other to support the Pseudo-clock
 
-extern void test(); // function/proces to test the nucleus
+extern void test(); // function/process to test the nucleus
 
-void uTLB_RefillHandler() {
-    int prid = getPRID();
-    setENTRYHI(0x80000000);
-    setENTRYLO(0x00000000);
-    TLBWR();
-    LDST(GET_EXCEPTION_STATE_PTR(prid));
-}
+extern void uTLB_RefillHandler();
 
 void exceptionHandler() {} // just a placeholder, has to be implemented
 
@@ -52,25 +49,19 @@ void passupvectorInit() {
 int main() {
     passupvectorInit();
 
+    // 3.
     initPcbs();
     initASL();
 
     // 4.
-
-    globalLock = 1;
-    processCount = MAXPROC;
+    globalLock = 0;
+    processCount = 0;
     mkEmptyProcQ(readyQueue);
     for (int i = 0; i < NCPU; i++) {
-        currentProcess[i] = allocPcb();
+        currentProcess[i] = NULL;
     }
-
-    /*
-       *
-       * deviceSemaphores (???)
-       *
-    */
     for (int i = 0; i < NRSEMAPHORES; i++) {
-
+        deviceSemaphores[i] = {0};
     }
 
     // 5.
@@ -78,19 +69,34 @@ int main() {
 
     // 6.
     /*
-     * probably not needed to set manually the tree fields to NULL since allocPcb() already does that
-     * actually it's not really needed to set anything to NULL/0 since allocPcb() does already everything
+     * enabling interrupts, setting kernel mode on and SP to RAMTOP
      */
-    pcb_t *kernel = allocPcb();
-    kernel->p_parent = NULL;
-    kernel->p_time = 0;
-    kernel->p_semAdd = NULL;
-    kernel->p_supportStruct = NULL;
+    pcb_t *kernel = currentProcess[0];
+    kernel = allocPcb();
+    kernel->p_s.status = MSTATUS_MIE_MASK | MSTATUS_MPP_M;
+    RAMTOP(kernel->p_s.reg_sp);
+    kernel->p_s.mie = MIE_ALL;
+    kernel->p_s.pc_epc = (memaddr)test;
+    processCount++;
+    insertProcQ(readyQueue, kernel);
 
-    // 7. uhhhhh????
+    // 7.
+    // vengono assegnati 6 registri ad ogni CPU
+    int cpu_counter = -1;
+    for (int i = 0; i < IRT_NUM_ENTRY; i++) {
+        if (i % (IRT_NUM_ENTRY/NCPU) == 0) { // quando finisce di riempire tutti e 6 i registri di ogni CPU allora incrementa il cpu_counter
+            cpu_counter++;
+        }
+        *((memaddr *)(IRT_START + i*WS)) |= IRT_RP_BIT_ON; // il 28esimo bit della interrupt line viene settato ad 1
+        *((memaddr *)(IRT_START + i*WS)) |= (1 << cpu_counter); // il CPU-esimo bit dell'interrupt line viene settato ad 1
+    }
 
     // 8. uh?
-    for (int i = 0; i < NCPU - 1; i++) {
+    for (int i = 1; i < NCPU; i++) {
+        currentProcess[i] = allocPcb();
+        currentProcess[i]->p_s.status = MSTATUS_MPP_M;
+        currentProcess[i]->p_s.pc_epc = (memaddr)scheduler;
+        currentProcess[i]->p_s.reg_sp = 0x20020000 + (i * PAGESIZE);
 
     }
 
