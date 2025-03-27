@@ -1,43 +1,44 @@
-#include "scheduler.h"
+#include "./include/scheduler.h"
 
-extern int globalLock; //0=libero, 1=occupato
-extern pcb_t* per_cpu_current_process[NUM_CPUS]; // Array per-CPU
+extern int processCount;          
+extern int globalLock;             
+extern struct list_head readyQueue;
 
 void scheduler() {
+    int core_id = getCPUID(); //robaccia di μRISC-V
     
-    while(swap(&globalLock, 1));   //no idea, me lo ha detto deep
     
-    // Rimozione dalla Ready Queue
-    pcb_t* current_process = removeProcQ(&Ready_Queue);
+    while(globalLock);  // busy-wait per il lock
+    globalLock = 1;
+
     
-    if(current_process != NULL) {
-                
-        int cpu_id = getCPUID();   // Impostazione current process per questo core
-        per_cpu_current_process[cpu_id] = current_process;
+    pcb_t *new_process = removeProcQ(&readyQueue); //rimozione processo dalla ready Queue
+    
+    if(new_process != NULL) {
         
-        setPLT(TIMESLICE * (*((cpu_t*)TIMESCALEADDR)));
+        currentProcess[core_id] = new_process;
+        
+        
+        setPLT(TIMESLICE * (*((cpu_t *)TIMESCALEADDR)));// ancora non ho capito sti timer, ma dovrebbe funzionare
+        
         
         globalLock = 0;
         
-        LDST(&(current_process->p_s));
-    } 
-
-    else {
-
-        if(process_count == 0) {  //coda vuota
-            globalLock = 0; //core libero
+        
+        LDST(&(new_process->p_s));  //caricamento process state
+    } else {
+        
+        if(processCount == 0) { //estione coda vuota (usa processCount da initial)
+            globalLock = 0;
             HALT();
         }
-        else if(process_count > 0 && soft_blocked_count > 0) {
+        else if(processCount > 0 && soft_blocked_count > 0) {
             
+            setSTATUS(getSTATUS() | IECON | IMON);  //config inteerupt
+            setMIE(getMIE() & ~0x80); //disabilita timer interrupt
             
-            unsigned int status = getSTATUS();
-     
-            
-            per_cpu_current_process[getCPUID()] = NULL;
-            
-            
-            globalLock = 0;         // Rilascio lock prima di WAIT
+            currentProcess[core_id] = NULL;
+            globalLock = 0;
             WAIT();
         }
         else {
@@ -46,3 +47,5 @@ void scheduler() {
         }
     }
 }
+
+
