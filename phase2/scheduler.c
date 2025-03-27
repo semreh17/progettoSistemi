@@ -4,12 +4,8 @@ extern int processCount;
 extern int globalLock;            
 extern struct list_head readyQueue;
 
-
-
-
 void scheduler() {
     int core_id = getPRID(); //robaccia di riscv
-    
     
     ACQUIRE_LOCK();
 
@@ -19,11 +15,9 @@ void scheduler() {
         
         currentProcess[core_id] = new_process;      //assegnazione al core corrente
         
-        
         new_process->p_s.irt = 0;       //irt=interrupt resiaìdual time
         
         setPLT(TIMESLICE * (*((cpu_t *)TIMESCALEADDR))); //timer che non ho ancora capito come funzioni
-        
         
         RELEASE_LOCK();
         
@@ -38,7 +32,6 @@ void scheduler() {
 
         else if(processCount > 0 && soft_blocked_count > 0) {
             
-            
             setTPR(1);      //tpr=task priority manager
             
             setMIE(MIE_ALL & ~MIE_MTIE_MASK);
@@ -52,6 +45,7 @@ void scheduler() {
         }
 
         else {
+
             RELEASE_LOCK();
             PANIC();
         }
