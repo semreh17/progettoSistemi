@@ -8,7 +8,7 @@ extern struct list_head readyQueue;
 
 
 void scheduler() {
-    int core_id = getCPUID(); //robaccia di riscv
+    int core_id = getPRID(); //robaccia di riscv
     
     
     ACQUIRE_LOCK();
