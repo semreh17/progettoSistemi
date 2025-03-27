@@ -7,22 +7,16 @@
 #include "uriscv/liburiscv.h"
 #include "uriscv/arch.h"
 
-void *scheduler(); // placeholder for scheduler
-
 int processCount; // started but not terminated process
 struct list_head *readyQueue; // queue of PCB's in the ready state
-
 struct pcb_t *currentProcess[NCPU]; // vector of pointers to the PCB that is in the "running" state on each CPU
 volatile int globalLock;
-
 struct semd_t deviceSemaphores[NRSEMAPHORES];
-//device semaphores: two types semaphores, the first for each external device and the other to support the Pseudo-clock
 
 extern void test(); // function/process to test the nucleus
-
+extern void scheduler(); // placeholder for scheduler
 extern void uTLB_RefillHandler();
-
-void exceptionHandler() {} // just a placeholder, has to be implemented
+extern void exceptionHandler(); // just a placeholder, has to be implemented
 
 void passupvectorInit() {
     passupvector_t *passup;
@@ -43,10 +37,10 @@ void passupvectorInit() {
         passup->exception_handler = (memaddr)exceptionHandler;
         passup->exception_stackPtr = 0x20020000 + (i * PAGESIZE);
     }
-
 }
 
 int main() {
+    // 2.
     passupvectorInit();
 
     // 3.
@@ -90,16 +84,20 @@ int main() {
         *((memaddr *)(IRT_START + i*WS)) |= IRT_RP_BIT_ON; // il 28esimo bit della interrupt line viene settato ad 1
         *((memaddr *)(IRT_START + i*WS)) |= (1 << cpu_counter); // il CPU-esimo bit dell'interrupt line viene settato ad 1
     }
+    *((memaddr *)TPR) = 0; // setting the task priority
 
-    // 8. uh?
+    // 8.
     for (int i = 1; i < NCPU; i++) {
         currentProcess[i] = allocPcb();
         currentProcess[i]->p_s.status = MSTATUS_MPP_M;
         currentProcess[i]->p_s.pc_epc = (memaddr)scheduler;
         currentProcess[i]->p_s.reg_sp = 0x20020000 + (i * PAGESIZE);
-
+        currentProcess[i]->p_s.mie = 0;
+        currentProcess[i]->p_s.gpr = {0};
+        currentProcess[i]->p_s.cause = 0;
+        currentProcess[i]->p_s.entry_hi = 0;
     }
 
-
+    scheduler();
 
 }
