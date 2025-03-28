@@ -1,4 +1,6 @@
-#include "./include/scheduler.h"  //che ovviamente non funziona dio animale
+#include "../headers/const.h"
+#include "../headers/types.h"
+#include "../phase1/headers/pcb.h"
 
 extern int processCount;         
 extern int globalLock;            
