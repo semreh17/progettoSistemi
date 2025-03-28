@@ -3,7 +3,8 @@
 #include "../phase1/headers/pcb.h"
 
 extern int processCount;         
-extern int globalLock;            
+extern int globalLock;
+extern struct pcb_t *currentProcess[NCPU];         
 extern struct list_head readyQueue;
 
 void scheduler() {
