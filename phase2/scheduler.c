@@ -7,7 +7,7 @@ extern struct list_head readyQueue;
 void scheduler() {
     int core_id = getPRID(); //robaccia di riscv
     
-    ACQUIRE_LOCK();
+    ACQUIRE_LOCK(&globalLock);
 
     pcb_t *new_process = removeProcQ(&readyQueue);  //rimuove processo dalla queue
     
@@ -31,7 +31,7 @@ void scheduler() {
             HALT();
         }
 
-        else if(processCount > 0 && soft_blocked_count > 0) {
+        else if(processCount > 0 && core_id!=0) {
             
             setTPR(1);      //tpr=task priority manager
             
