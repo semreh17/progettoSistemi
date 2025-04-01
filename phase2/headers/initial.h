@@ -1,9 +1,9 @@
 #include "../../headers/types.h"    //dio porco sti path 
 #include "uriscv/types.h"           //sto per ammazzare la mia famiglia
-#include "../headers/listx.h"          //qualcuno mi aiuti vi prego
-#include "../headers/const.h"
-#include "../phase1/headers/asl.h"
-#include "../phase1/headers/pcb.h"
+#include "../../headers/listx.h"          //qualcuno mi aiuti vi prego
+#include "../../headers/const.h"
+#include "../../phase1/headers/asl.h"
+#include "../../phase1/headers/pcb.h"
 #include "uriscv/liburiscv.h"
 #include "uriscv/arch.h"
 

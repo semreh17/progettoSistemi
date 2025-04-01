@@ -1,4 +1,3 @@
-
 #ifndef SCHEDULER
 #define SCHEDULER
 
@@ -6,7 +5,7 @@
 #include "../../headers/types.h"
 #include "../../phase1/headers/pcb.h"
 #include "timers.h"
-#include "initial.h" 
+#include "initial.h"
 #include <umps/libumps.h>
 
 #define ACQUIRE_LOCK() while(swap(&globalLock, 1))
