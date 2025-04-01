@@ -1,53 +1,41 @@
-#include "./include/scheduler.h"  //che ovviamente non funziona dio animale
+#include "../headers/types.h"
+#include "../headers/listx.h"
+#include "../headers/const.h"
+#include "../phase1/headers/pcb.h"
+#include "uriscv/liburiscv.h"
 
-extern int processCount;         
-extern int globalLock;            
+extern int processCount;
+extern volatile unsigned int globalLock;
 extern struct list_head readyQueue;
+extern struct pcb_t *currentProcess[NCPU];
 
 void scheduler() {
-    int core_id = getPRID(); //robaccia di riscv
-    
-    ACQUIRE_LOCK();
+    unsigned int coreId = getPRID();
 
-    pcb_t *new_process = removeProcQ(&readyQueue);  //rimuove processo dalla queue
-    
-    if(new_process != NULL) {
-        
-        currentProcess[core_id] = new_process;      //assegnazione al core corrente
-        
-        new_process->p_s.irt = 0;       //irt=interrupt resiaìdual time
-        
-        setPLT(TIMESLICE * (*((cpu_t *)TIMESCALEADDR))); //timer che non ho ancora capito come funzioni
-        
-        RELEASE_LOCK();
-        
-        LDST(&(new_process->p_s));  //caricamento process state
+    //TODO: gestire possibili race conditions
+    ACQUIRE_LOCK(&globalLock);
+    pcb_t *newProcess = removeProcQ(&readyQueue);  //rimuove processo dalla queue
 
-    } else {
-        
-        if(processCount == 0) {     //se la coda è vuota
-            RELEASE_LOCK();
+    if (!emptyProcQ(&readyQueue)) {
+        // qua probably manca della roba
+        currentProcess[coreId] = newProcess;      //assegnazione al core corrente
+        RELEASE_LOCK(&globalLock);
+        LDST(&(newProcess->p_s));  //caricamento process state
+    }else {
+        if (processCount == 0) {     //se la coda è vuota
+            RELEASE_LOCK(&globalLock);
             HALT();
-        }
+        }else if (processCount > 0 && coreId != 0) { // non ho capito perché controlli anche il coreId
 
-        else if(processCount > 0 && soft_blocked_count > 0) {
-            
-            setTPR(1);      //tpr=task priority manager
-            
+            *((memaddr *)TPR) = 1; // setting the TPR to 1
             setMIE(MIE_ALL & ~MIE_MTIE_MASK);
             unsigned int status = getSTATUS();
             status |= MSTATUS_MIE_MASK;
-            setSTATUS(status);  //disabilita timer interrupt
-            
-            currentProcess[core_id] = NULL;
-            RELEASE_LOCK();
+            setSTATUS(status);  // disabilita timer interrupt
+
+            //currentProcess[coreId] = NULL; la commento, ma non so in realtà a cosa serva
+            RELEASE_LOCK(&globalLock);
             WAIT();
-        }
-
-        else {
-
-            RELEASE_LOCK();
-            PANIC();
         }
     }
 }

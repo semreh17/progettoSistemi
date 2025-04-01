@@ -8,9 +8,9 @@
 #include "uriscv/arch.h"
 
 int processCount; // started but not terminated process
-struct list_head *readyQueue; // queue of PCB's in the ready state
+struct list_head readyQueue; // queue of PCB's in the ready state
 struct pcb_t *currentProcess[NCPU]; // vector of pointers to the PCB that is in the "running" state on each CPU
-volatile int globalLock;
+volatile int globalLock; // volatile type is used to prevent the compiler to change the val
 struct semd_t deviceSemaphores[NRSEMAPHORES];
 
 extern void test(); // function/process to test the nucleus
@@ -48,9 +48,9 @@ int main() {
     initASL();
 
     // 4.
-    globalLock = 0;
+    globalLock = 1;
     processCount = 0;
-    mkEmptyProcQ(readyQueue);
+    mkEmptyProcQ(&readyQueue);
     for (int i = 0; i < NCPU; i++) {
         currentProcess[i] = NULL;
     }
@@ -72,7 +72,7 @@ int main() {
     kernel->p_s.mie = MIE_ALL;
     kernel->p_s.pc_epc = (memaddr)test;
     processCount++;
-    insertProcQ(readyQueue, kernel);
+    insertProcQ(&readyQueue, kernel);
 
     // 7.
     // vengono assegnati 6 registri ad ogni CPU
