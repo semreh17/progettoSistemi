@@ -18,9 +18,6 @@ void scheduler() {
         
         currentProcess[core_id] = new_process;      //assegnazione al core corrente
         
-        new_process->p_s.cause = 0;  
-        new_process->p_s.status &= ~0x800; 
-        
         setPLT(TIMESLICE * (*((cpu_t *)TIMESCALEADDR))); //timer che non ho ancora capito come funzioni
         
         RELEASE_LOCK();
