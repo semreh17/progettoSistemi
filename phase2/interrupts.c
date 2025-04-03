@@ -43,7 +43,7 @@ void interrupt_handler() {
         case 19: intLineNo = 5; break;  // Ethernet (IL_ETHERNET)
         case 20: intLineNo = 6; break;  // Printer (IL_PRINTER)
         case 21: intLineNo = 7; break;  // Terminal (IL_TERMINAL)
-        default: goto CappoHaiSbagliato   //errore nell'exception handler (si lo so il goto fa merda)   
+        default: goto CappoHaiSbagliato;   //errore nell'exception handler (si lo so il goto fa merda)   
     }
 
 
