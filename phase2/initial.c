@@ -62,9 +62,7 @@ int main() {
     LDIT(PSECOND);
 
     // 6.
-    /*
-     * enabling interrupts, setting kernel mode on and SP to RAMTOP
-     */
+    // enabling interrupts, setting kernel mode on and SP to RAMTOP
     pcb_t *kernel = currentProcess[0];
     kernel = allocPcb();
     kernel->p_s.status = MSTATUS_MIE_MASK | MSTATUS_MPP_M;
