@@ -11,9 +11,11 @@ extern struct pcb_t *currentProcess[NCPU];
 
 void scheduler() {
     unsigned int coreId = getPRID();
+    
+    if (!globalLock) {
+        ACQUIRE_LOCK(&globalLock);
+    }
 
-    //TODO: gestire possibili race conditions
-    ACQUIRE_LOCK(&globalLock);
     pcb_t *newProcess = removeProcQ(&readyQueue);  //rimuove processo dalla queue
 
     if (!emptyProcQ(&readyQueue)) {
