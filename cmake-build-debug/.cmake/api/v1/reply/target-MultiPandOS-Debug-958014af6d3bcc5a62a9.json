@@ -94,10 +94,7 @@
 			[
 				0,
 				1,
-				2,
-				3,
-				4,
-				5
+				2
 			]
 		},
 		{
@@ -154,8 +151,8 @@
 			"language" : "ASM",
 			"sourceIndexes" : 
 			[
-				6,
-				7
+				3,
+				4
 			]
 		}
 	],
@@ -190,18 +187,15 @@
 			[
 				0,
 				1,
-				2,
-				3,
-				4,
-				5
+				2
 			]
 		},
 		{
 			"name" : "",
 			"sourceIndexes" : 
 			[
-				6,
-				7
+				3,
+				4
 			]
 		}
 	],
@@ -222,25 +216,7 @@
 		{
 			"backtrace" : 1,
 			"compileGroupIndex" : 0,
-			"path" : "phase2/exceptions.c",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
 			"path" : "phase2/initial.c",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "phase2/interrupts.c",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "phase2/scheduler.c",
 			"sourceGroupIndex" : 0
 		},
 		{

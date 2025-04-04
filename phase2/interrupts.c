@@ -2,7 +2,7 @@
 #include "uriscv/liburiscv.h"
 
 extern int processCount;
-extern unsigned int globalLock;
+extern volatile unsigned int globalLock;
 extern struct pcb_t *currentProcess[NCPU];
 extern struct list_head readyQueue;
 extern void scheduler();

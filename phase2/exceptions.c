@@ -1,13 +1,17 @@
-#include "../headers/const.h"
-#include "../headers/types.h"
-#include "../phase1/headers/pcb.h"
-#include "uriscv/liburiscv.h"  // Per le funzioni e variabili di uriscv
-#include  "uriscv/cpu.h"
-// Roba globale che serve presa dallo scheduler
+
+
 extern int processCount;         // quanti processi ci sono in giro
-extern struct pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
+extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
 extern struct list_head readyQueue;  // La fila dei processi pronti
 
+void handleInterrupt() {
+    //  Qui ci va la logica per capire se è il PLT (timer locale),se sì, reinserire il processo in ready queue e chiamare lo scheduler
+    //  se è l'interval time fare il tick del pseudo-clock
+    //  se è un dispositivo svegliare chi stava aspettando
+    //  che a questo punto scriviamo direttamente in interrupt.c
+
+    LDST(GET_EXCEPTION_STATE_PTR(getPRID()));
+}
 
 void exceptionHandler() {
     int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
@@ -17,7 +21,7 @@ void exceptionHandler() {
     unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
     
     if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
-        // handleInterrupt();
+        handleInterrupt();
         return;
     }
     
@@ -44,11 +48,3 @@ void exceptionHandler() {
 }
 
 
-void handleInterrupt() {
-    //  Qui ci va la logica per capire se è il PLT (timer locale),se sì, reinserire il processo in ready queue e chiamare lo scheduler
-    //  se è l'interval time fare il tick del pseudo-clock
-    //  se è un dispositivo svegliare chi stava aspettando
-    //  che a questo punto scriviamo direttamente in interrupt.c
-    
-    LDST(GET_EXCEPTION_STATE_PTR(getPRID()));
-}

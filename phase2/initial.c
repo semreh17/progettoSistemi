@@ -1,11 +1,18 @@
-#include "../headers/types.h"
-#include "uriscv/types.h"
-#include "../headers/listx.h"
-#include "../headers/const.h"
 #include "../phase1/headers/asl.h"
 #include "../phase1/headers/pcb.h"
-#include "uriscv/liburiscv.h"
-#include "uriscv/arch.h"
+
+#include <uriscv/types.h>
+#include <uriscv/cpu.h>
+#include <uriscv/arch.h>
+#include "../klog.c"
+
+#include "p2test.c"
+
+#include "scheduler.c"
+#include "interrupts.c"
+#include "exceptions.c"
+
+
 
 int processCount; // started but not terminated process
 struct list_head readyQueue; // queue of PCB's in the ready state
@@ -42,10 +49,12 @@ void passupvectorInit() {
 int main() {
     // 2.
     passupvectorInit();
+    klog_print("PASSUPVECTOR INITIALIZED\n");
 
     // 3.
     initPcbs();
     initASL();
+    klog_print("pcb e asl INITIALIZED\n");
 
     // 4.
     globalLock = 0;
@@ -55,13 +64,15 @@ int main() {
         currentProcess[i] = NULL;
     }
     for (int i = 0; i < NRSEMAPHORES; i++) {
-        deviceSemaphores[i].s_key = 0;
-        INIT_LIST_HEAD(&deviceSemaphores[i].s_link);
-        INIT_LIST_HEAD(&deviceSemaphores[i].s_procq);
+
+        deviceSemaphores[i] = (semd_t) {0};
     }
+    klog_print("semafroc INITIALIZED\n");
 
     // 5.
     LDIT(PSECOND);
+    klog_print("LDIT INITIALIZED\n");
+
 
     // 6.
     // enabling interrupts, setting kernel mode on and SP to RAMTOP
@@ -73,6 +84,7 @@ int main() {
     kernel->p_s.pc_epc = (memaddr)test;
     processCount++;
     insertProcQ(&readyQueue, kernel);
+    klog_print("test\n");
 
     // 7.
     // vengono assegnati 6 registri ad ogni CPU
@@ -85,6 +97,7 @@ int main() {
         *((memaddr *)(IRT_START + i*WS)) |= (1 << cpu_counter); // il CPU-esimo bit dell'interrupt line viene settato ad 1
     }
     *((memaddr *)TPR) = 0; // setting the task priority
+    klog_print("registri gas\n");
 
     // 8.
     for (int i = 1; i < NCPU; i++) {
@@ -98,7 +111,7 @@ int main() {
         currentProcess[i]->p_s.cause = 0;
         currentProcess[i]->p_s.entry_hi = 0;
     }
-
+    klog_print("SCHEDULER\n");
     scheduler();
 
 }

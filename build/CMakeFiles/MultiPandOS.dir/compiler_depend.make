@@ -24,71 +24,37 @@ CMakeFiles/MultiPandOS.dir/phase1/pcb.c.o: /home/semreh_17/software/CLionProject
   /usr/include/uriscv/csr.h \
   /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h
 
-CMakeFiles/MultiPandOS.dir/phase2/exceptions.c.o: /home/semreh_17/software/CLionProjects/starterKit/phase2/exceptions.c \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/const.h \
-  /usr/include/uriscv/const.h \
-  /usr/include/uriscv/csr.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/types.h \
-  /usr/include/uriscv/types.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/const.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
-  /home/semreh_17/software/CLionProjects/starterKit/phase1/headers/pcb.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/types.h \
-  /usr/include/uriscv/liburiscv.h \
-  /usr/include/uriscv/cpu.h
-
 CMakeFiles/MultiPandOS.dir/phase2/initial.c.o: /home/semreh_17/software/CLionProjects/starterKit/phase2/initial.c \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/types.h \
-  /usr/include/uriscv/types.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/const.h \
-  /usr/include/uriscv/const.h \
-  /usr/include/uriscv/csr.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/const.h \
   /home/semreh_17/software/CLionProjects/starterKit/phase1/headers/asl.h \
   /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
   /home/semreh_17/software/CLionProjects/starterKit/headers/types.h \
-  /home/semreh_17/software/CLionProjects/starterKit/phase1/headers/pcb.h \
-  /usr/include/uriscv/liburiscv.h \
-  /usr/include/uriscv/arch.h
-
-CMakeFiles/MultiPandOS.dir/phase2/interrupts.c.o: /home/semreh_17/software/CLionProjects/starterKit/phase2/interrupts.c \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/types.h \
   /usr/include/uriscv/types.h \
   /home/semreh_17/software/CLionProjects/starterKit/headers/const.h \
   /usr/include/uriscv/const.h \
   /usr/include/uriscv/csr.h \
   /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/const.h \
   /home/semreh_17/software/CLionProjects/starterKit/phase1/headers/pcb.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/types.h \
-  /usr/include/uriscv/liburiscv.h \
-  /home/semreh_17/software/CLionProjects/starterKit/phase2/initial.c \
-  /home/semreh_17/software/CLionProjects/starterKit/phase1/headers/asl.h \
-  /usr/include/uriscv/arch.h
-
-CMakeFiles/MultiPandOS.dir/phase2/scheduler.c.o: /home/semreh_17/software/CLionProjects/starterKit/phase2/scheduler.c \
-  /home/semreh_17/software/CLionProjects/starterKit/phase1/headers/pcb.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/types.h \
-  /usr/include/uriscv/types.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/const.h \
-  /usr/include/uriscv/const.h \
-  /usr/include/uriscv/csr.h \
-  /home/semreh_17/software/CLionProjects/starterKit/headers/listx.h \
+  /usr/include/uriscv/cpu.h \
+  /usr/include/uriscv/arch.h \
+  /home/semreh_17/software/CLionProjects/starterKit/klog.c \
   /home/semreh_17/software/CLionProjects/starterKit/phase2/p2test.c \
   /home/semreh_17/software/CLionProjects/starterKit/headers/const.h \
   /home/semreh_17/software/CLionProjects/starterKit/headers/types.h \
-  /usr/include/uriscv/liburiscv.h
+  /usr/include/uriscv/liburiscv.h \
+  /home/semreh_17/software/CLionProjects/starterKit/phase2/scheduler.c \
+  /home/semreh_17/software/CLionProjects/starterKit/phase2/interrupts.c \
+  /home/semreh_17/software/CLionProjects/starterKit/phase2/exceptions.c
 
+
+/home/semreh_17/software/CLionProjects/starterKit/phase2/exceptions.c:
+
+/home/semreh_17/software/CLionProjects/starterKit/phase2/interrupts.c:
+
+/usr/include/uriscv/liburiscv.h:
 
 /home/semreh_17/software/CLionProjects/starterKit/phase2/p2test.c:
 
-/home/semreh_17/software/CLionProjects/starterKit/phase2/interrupts.c:
+/home/semreh_17/software/CLionProjects/starterKit/klog.c:
 
 /home/semreh_17/software/CLionProjects/starterKit/phase1/headers/asl.h:
 
@@ -96,17 +62,7 @@ CMakeFiles/MultiPandOS.dir/phase2/scheduler.c.o: /home/semreh_17/software/CLionP
 
 /usr/include/uriscv/types.h:
 
-/home/semreh_17/software/CLionProjects/starterKit/phase2/initial.c:
-
-/home/semreh_17/software/CLionProjects/starterKit/headers/types.h:
-
-/usr/include/uriscv/arch.h:
-
-/home/semreh_17/software/CLionProjects/starterKit/headers/const.h:
-
 /home/semreh_17/software/CLionProjects/starterKit/phase1/pcb.c:
-
-/home/semreh_17/software/CLionProjects/starterKit/phase2/exceptions.c:
 
 /home/semreh_17/software/CLionProjects/starterKit/phase2/scheduler.c:
 
@@ -118,6 +74,12 @@ CMakeFiles/MultiPandOS.dir/phase2/scheduler.c.o: /home/semreh_17/software/CLionP
 
 /home/semreh_17/software/CLionProjects/starterKit/phase1/headers/pcb.h:
 
-/usr/include/uriscv/liburiscv.h:
+/home/semreh_17/software/CLionProjects/starterKit/headers/types.h:
+
+/home/semreh_17/software/CLionProjects/starterKit/phase2/initial.c:
 
 /usr/include/uriscv/cpu.h:
+
+/home/semreh_17/software/CLionProjects/starterKit/headers/const.h:
+
+/usr/include/uriscv/arch.h:

@@ -1,10 +1,7 @@
-#include "../phase1/headers/pcb.h"
-#include "p2test.c"
-
 extern int processCount;
 extern volatile unsigned int globalLock;
 extern struct list_head readyQueue;
-extern struct pcb_t *currentProcess[NCPU];
+extern pcb_t *currentProcess[NCPU];
 
 void scheduler() {
     unsigned int coreId = getPRID();
