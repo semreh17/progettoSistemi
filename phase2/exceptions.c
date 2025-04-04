@@ -2,10 +2,7 @@
 #include "../headers/types.h"
 #include "../phase1/headers/pcb.h"
 #include "uriscv/liburiscv.h"  // Per le funzioni e variabili di uriscv
-#include "uriscv/arch.h"
-#define CAUSE_EXCCODE_MASK 0x0000007F
-
-
+#include  "uriscv/cpu.h"
 // Roba globale che serve presa dallo scheduler
 extern int processCount;         // quanti processi ci sono in giro
 extern struct pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
@@ -20,7 +17,7 @@ void exceptionHandler() {
     unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
     
     if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
-        handleInterrupt();  
+        // handleInterrupt();
         return;
     }
     
@@ -29,7 +26,7 @@ void exceptionHandler() {
     switch(exc_code) {
         case 8:  // SYSCALL
         case 11: // SYSCALL
-            handleSyscall(exc_state);  // il gestore di syscall
+            // handleSyscall(exc_state);  // il gestore di syscall
             break;
             
         case 24:
@@ -54,14 +51,4 @@ void handleInterrupt() {
     //  che a questo punto scriviamo direttamente in interrupt.c
     
     LDST(GET_EXCEPTION_STATE_PTR(getPRID()));
-}
-
-
-void uTLB_RefillHandler() {         //fuzione fornita neelle spec
-int prid = getPRID();              
-5
-setENTRYHI(0x80000000);
-setENTRYLO(0x00000000);
-TLBWR();
-LDST(GET_EXCEPTION_STATE_PTR(prid));
 }

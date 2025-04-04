@@ -8,9 +8,9 @@
 #include "uriscv/arch.h"
 
 int processCount; // started but not terminated process
-struct list_head *readyQueue; // queue of PCB's in the ready state
+struct list_head readyQueue; // queue of PCB's in the ready state
 struct pcb_t *currentProcess[NCPU]; // vector of pointers to the PCB that is in the "running" state on each CPU
-volatile int globalLock;
+volatile unsigned int globalLock;
 struct semd_t deviceSemaphores[NRSEMAPHORES];
 
 extern void test(); // function/process to test the nucleus
@@ -50,12 +50,14 @@ int main() {
     // 4.
     globalLock = 0;
     processCount = 0;
-    mkEmptyProcQ(readyQueue);
+    mkEmptyProcQ(&readyQueue);
     for (int i = 0; i < NCPU; i++) {
         currentProcess[i] = NULL;
     }
     for (int i = 0; i < NRSEMAPHORES; i++) {
-        deviceSemaphores[i] = {0};
+        deviceSemaphores[i].s_key = 0;
+        INIT_LIST_HEAD(&deviceSemaphores[i].s_link);
+        INIT_LIST_HEAD(&deviceSemaphores[i].s_procq);
     }
 
     // 5.
@@ -70,7 +72,7 @@ int main() {
     kernel->p_s.mie = MIE_ALL;
     kernel->p_s.pc_epc = (memaddr)test;
     processCount++;
-    insertProcQ(readyQueue, kernel);
+    insertProcQ(&readyQueue, kernel);
 
     // 7.
     // vengono assegnati 6 registri ad ogni CPU
@@ -86,12 +88,13 @@ int main() {
 
     // 8.
     for (int i = 1; i < NCPU; i++) {
-        currentProcess[i] = allocPcb();
         currentProcess[i]->p_s.status = MSTATUS_MPP_M;
         currentProcess[i]->p_s.pc_epc = (memaddr)scheduler;
         currentProcess[i]->p_s.reg_sp = 0x20020000 + (i * PAGESIZE);
         currentProcess[i]->p_s.mie = 0;
-        currentProcess[i]->p_s.gpr = {0};
+        for (int j = 0; j < STATE_GPR_LEN; j++) {
+            currentProcess[i]->p_s.gpr[j] = 0;
+        }
         currentProcess[i]->p_s.cause = 0;
         currentProcess[i]->p_s.entry_hi = 0;
     }

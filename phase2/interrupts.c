@@ -1,21 +1,13 @@
-#include "../headers/types.h"
-#include "uriscv/types.h"
-#include "../headers/listx.h"
-#include "../headers/const.h"
-#include "../phase1/headers/asl.h"
 #include "../phase1/headers/pcb.h"
 #include "uriscv/liburiscv.h"
-#include "uriscv/arch.h"
 
-extern int processCount;         
-extern int globalLock;
-extern struct pcb_t *currentProcess[NCPU];         
+extern int processCount;
+extern unsigned int globalLock;
+extern struct pcb_t *currentProcess[NCPU];
 extern struct list_head readyQueue;
-
-
+extern void scheduler();
 
 #define BITMAP_BASE 0x10000040
-#define CAUSE_EXCCODE_MASK 0x0000007F
 
 void interrupt_handler() {
    
@@ -34,7 +26,6 @@ void interrupt_handler() {
     will remain on– until the interrupt is acknowledged. Interrupts for peripheral devices are acknowledged
     by writing the acknowledge command code in the appropriate device’s device register. */
 
-    
     switch(exc_code) {
         case 7:  intLineNo = 1; break;  // PLT (IL_CPU_TIMER)
         case 3:  intLineNo = 2; break;  // Interval Timer (IL_TIMER)
@@ -62,15 +53,15 @@ static void localTimerInterruptHandler(state_t *exception_state) {  //per IL_CPU
     ACQUIRE_LOCK(&globalLock); //non so quando ci va quindi io lo metto sempre fanculo
     
 
-    setPLT(0); //nelle spec c'è scritto di usare setTIMER ma non ne vedo il motivo quando c'è questa(?)
+    // setPLT(0); //nelle spec c'è scritto di usare setTIMER ma non ne vedo il motivo quando c'è questa(?)
     
     
-    updateCPUtime(currentProcess[ID]);
+    // updateCPUtime(currentProcess[ID]);
     
     //Copy the processor state of the current CPU at the time of the exception into the Current
     //Process’s PCB (p_s) of the current CPU.
 
-    saveState(&(currentProcess[ID]->p_s), exception_state);
+    // saveState(&(currentProcess[ID]->p_s), exception_state);
     
     //Place the Current Process on the Ready Queue; transitioning the Current Process from the
     //“running” state to the “ready” state. (sto cambio di processo lo fa già la instertProcQ? perchè se non lo fa c'è da aggiungerlo)

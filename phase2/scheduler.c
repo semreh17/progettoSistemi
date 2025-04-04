@@ -1,8 +1,5 @@
-#include "../headers/types.h"
-#include "../headers/listx.h"
-#include "../headers/const.h"
 #include "../phase1/headers/pcb.h"
-#include "uriscv/liburiscv.h"
+#include "p2test.c"
 
 extern int processCount;
 extern volatile unsigned int globalLock;
@@ -40,24 +37,4 @@ void scheduler() {
             WAIT();
         }
     }
-}
-#include "../headers/types.h"
-#include "../headers/listx.h"
-#include "../headers/const.h"
-#include "../phase1/headers/pcb.h"
-#include "uriscv/liburiscv.h"
-
-void exceptionHandler() {}
-
-int createProcess(state_t *statep, pcb_t *caller) {
-    pcb_t *newProcess = allocPcb();
-    if (newProcess == NULL) {
-        statep->gpr[24] = -1;
-        return NULL;
-    }
-
-    newProcess->p_s = * (state_t*)statep->gpr[25];
-    newProcess->p_supportStruct = (support_t*)statep->gpr[26];
-    newProcess->p_pid = caller->p_pid++; // uh?
-
 }
