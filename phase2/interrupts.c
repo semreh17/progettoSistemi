@@ -7,8 +7,6 @@ extern struct pcb_t *currentProcess[NCPU];
 extern struct list_head readyQueue;
 extern void scheduler();
 
-#define BITMAP_BASE 0x10000040
-
 void interrupt_handler() {
    
     ACQUIRE_LOCK(&globalLock);
