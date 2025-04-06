@@ -27,7 +27,7 @@ void interrupt_handler() {
     by writing the acknowledge command code in the appropriate device’s device register. */
 
     switch(exc_code) {
-        case 7:  intLineNo = 1; break;  // PLT (IL_CPU_TIMER)
+        case 7:  intLineNo = 1; break;  // PLT (IL_CPUTIMER)
         case 3:  intLineNo = 2; break;  // Interval Timer (IL_TIMER)
         case 17: intLineNo = 3; break;  // Disk (IL_DISK)
         case 18: intLineNo = 4; break;  // Flash (IL_FLASH)
@@ -46,7 +46,7 @@ CappoHaiSbagliato:
 
 
 
-static void localTimerInterruptHandler(state_t *exception_state) {  //per IL_CPU
+static void LocalTimerInterrupt(state_t *ExeptionOccurred) {  //per IL_CPUTIMER
 
     int ID=getPRID();
 
@@ -61,7 +61,7 @@ static void localTimerInterruptHandler(state_t *exception_state) {  //per IL_CPU
     //Copy the processor state of the current CPU at the time of the exception into the Current
     //Process’s PCB (p_s) of the current CPU.
 
-    // saveState(&(currentProcess[ID]->p_s), exception_state);
+    // saveState(&(currentProcess[ID]->p_s), ExeptionOccurred);
     
     //Place the Current Process on the Ready Queue; transitioning the Current Process from the
     //“running” state to the “ready” state. (sto cambio di processo lo fa già la instertProcQ? perchè se non lo fa c'è da aggiungerlo)
@@ -73,4 +73,36 @@ static void localTimerInterruptHandler(state_t *exception_state) {  //per IL_CPU
     
     
     scheduler(); //Call the Scheduler
+}
+
+
+
+static void SistemWideIntervalTimer(state_t *ExeptionOccurred) {
+    //1. Acknowledge the interrupt by loading the Interval Timer with a new value: 100 milliseconds
+    //(constant PSECOND). Load the Interval Timer value can be done with the following pre-defined
+    //macro LDIT(T).
+    LDIT(PSECOND);
+    
+    
+    pcb_t *pcbDaSbloccare;   //2. Unblock all PCBs blocked waiting a Pseudo-clock tick.
+
+    while((pcbDaSbloccare = removeProcQ(/*qui ci va la coda dei processi bloccati su pseudo clock*/) ) != NULL) { 
+
+        insertProcQ(&readyQueue, pcbDaSbloccare);
+
+        processCount--;
+        
+    }
+
+    //3. Return control to the Current Process of the current CPU if exists: perform a LDST on the saved
+    //exception state of the current CPU.
+
+    if(currentProcess) {
+
+        LDST(ExeptionOccurred);   
+        
+    } else {
+
+        scheduler();             
+    }
 }
