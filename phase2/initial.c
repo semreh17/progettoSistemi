@@ -61,10 +61,9 @@ int main() {
     processCount = 0;
     mkEmptyProcQ(&readyQueue);
     for (int i = 0; i < NCPU; i++) {
-        currentProcess[i] = NULL;
+        currentProcess[i] = allocPcb();
     }
     for (int i = 0; i < NRSEMAPHORES; i++) {
-
         deviceSemaphores[i] = (semd_t) {0};
     }
     klog_print("semafroc INITIALIZED\n");
@@ -76,7 +75,7 @@ int main() {
 
     // 6.
     // enabling interrupts, setting kernel mode on and SP to RAMTOP
-    pcb_t *kernel = currentProcess[0];
+    pcb_t *kernel = *currentProcess;
     kernel = allocPcb();
     kernel->p_s.status = MSTATUS_MIE_MASK | MSTATUS_MPP_M;
     RAMTOP(kernel->p_s.reg_sp);
@@ -110,6 +109,7 @@ int main() {
         }
         currentProcess[i]->p_s.cause = 0;
         currentProcess[i]->p_s.entry_hi = 0;
+        INITCPU(i, &currentProcess[i]->p_s.status);
     }
     klog_print("SCHEDULER\n");
     scheduler();
