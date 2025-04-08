@@ -1,17 +1,13 @@
 #include "../phase1/headers/asl.h"
 #include "../phase1/headers/pcb.h"
-
 #include <uriscv/types.h>
 #include <uriscv/cpu.h>
 #include <uriscv/arch.h>
-#include "../klog.c"
-
 #include "p2test.c"
-
 #include "scheduler.c"
 #include "interrupts.c"
 #include "exceptions.c"
-
+#include "../klog.c"
 
 
 int processCount; // started but not terminated process

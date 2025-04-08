@@ -1,5 +1,3 @@
-
-
 extern int processCount;         // quanti processi ci sono in giro
 extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
 extern struct list_head readyQueue;  // La fila dei processi pronti
