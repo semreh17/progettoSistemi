@@ -16,7 +16,8 @@ void scheduler() {
         // qua probably manca della roba
         currentProcess[coreId] = newProcess;      //assegnazione al core corrente
         RELEASE_LOCK(&globalLock);
-        LDST(&(newProcess->p_s));  //caricamento process state
+        LDST(&newProcess->p_s);  //caricamento process state
+        *((memaddr *)TPR) = 0; // setting the TPR to 0
     }else {
         if (processCount == 0) {     //se la coda è vuota
             RELEASE_LOCK(&globalLock);
