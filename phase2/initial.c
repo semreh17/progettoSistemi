@@ -36,9 +36,9 @@ void passupvectorInit() {
     for (int i = 1; i <= NCPU; i++) {
         passup += 0x10;
         passup->tlb_refill_handler = (memaddr)uTLB_RefillHandler;
-        passup->tlb_refill_stackPtr = 0x20020000 + (i * PAGESIZE);
+        passup->tlb_refill_stackPtr = RAMSTART + (64* PAGESIZE) +(i * PAGESIZE);
         passup->exception_handler = (memaddr)exceptionHandler;
-        passup->exception_stackPtr = 0x20020000 + (i * PAGESIZE);
+        passup->exception_stackPtr = RAMSTART + (64* PAGESIZE) +(i * PAGESIZE);
     }
 }
 
