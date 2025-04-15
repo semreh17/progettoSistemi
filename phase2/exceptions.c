@@ -1,3 +1,4 @@
+#include "../phase1/headers/pcb.h"
 extern int processCount;         // quanti processi ci sono in giro
 extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
 extern struct list_head readyQueue;  // La fila dei processi pronti
@@ -45,4 +46,24 @@ void exceptionHandler() {
     }
 }
 
+void terminateProcess(int pid) {
+    // creo un pcb vuoto che conterrà il pcb effettivo
+    pcb_t* toTerminate;
+    toTerminate->p_pid = pid;
+    // qua sborro (con container_of assegno il pcb con quell'effettivo pid a toTerminate)
+    toTerminate = container_of(&toTerminate->p_list, pcb_t, p_pid);
+    // scorro (sempre sborrando) finchè toTerminate non ha più figli, rimuovendoli ad ogni iterata
+    while (emptyChild(toTerminate)) {
+        outChild(toTerminate);
+    }
+    // infine termino, rimuovendolo dalla readyQueue (sperando che sia effettivamente lì)
+    removeProcQ(&toTerminate->p_list);
+    processCount--;
+}
 
+void passeren(int *semAdd) {
+    /*
+     * se semAdd = 1 allora decrementa il semaforo e fai una LDST sul pcb bloccato su quel semaforo
+     * in caso contrario devi fermare il processo su quel semaforo in qualche modo (con una wait? boh)
+     */
+}
