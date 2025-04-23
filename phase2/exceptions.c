@@ -2,6 +2,8 @@
 extern int processCount;         // quanti processi ci sono in giro
 extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
 extern struct list_head readyQueue;  // La fila dei processi pronti
+extern struct list_head semd_h;
+
 
 void handleInterrupt() {
     //  Qui ci va la logica per capire se è il PLT (timer locale),se sì, reinserire il processo in ready queue e chiamare lo scheduler
@@ -46,19 +48,101 @@ void exceptionHandler() {
     }
 }
 
-void terminateProcess(int pid) {
-    // creo un pcb vuoto che conterrà il pcb effettivo
-    pcb_t* toTerminate;
-    toTerminate->p_pid = pid;
-    // qua sborro (con container_of assegno il pcb con quell'effettivo pid a toTerminate)
-    toTerminate = container_of(&toTerminate->p_list, pcb_t, p_pid);
-    // scorro (sempre sborrando) finchè toTerminate non ha più figli, rimuovendoli ad ogni iterata
-    while (emptyChild(toTerminate)) {
-        outChild(toTerminate);
+/*
+ * location value:
+ * 0 = Current Process
+ * 1 = Ready Queue
+ * 2 = blocked on a semaphore
+ */
+void recursiveKiller(pcb_t *p, unsigned int location) {
+    if (p == NULL) {
+        return;
     }
-    // infine termino, rimuovendolo dalla readyQueue (sperando che sia effettivamente lì)
-    removeProcQ(&toTerminate->p_list);
-    processCount--;
+    // rendo orfani i processi figli
+    while (!emptyChild(p)) {
+        pcb_t *child = container_of(&p->p_child, pcb_t, p_list);
+        outChild(child);
+        recursiveKiller(child, location);
+    }
+    // c'è da uccidere il processo a tutti gli effetti
+    // teoricamente mi basta togliere ogni tipo di riferimento al processo, di conseguenza nulla lo punterà più
+    unsigned int processorID = getPRID();
+    switch (location) {
+        case 0:
+            outProcQ(&currentProcess[processorID]->p_list, p);
+            break;
+        case 1:
+            outProcQ(&readyQueue, p);
+            break;
+        case 2:
+            outBlocked(p);
+            break;
+        default:
+            break;
+    }
+}
+
+void terminateProcess(state_t *statep) {
+    pcb_t* toTerminate = NULL;
+    int pid = statep->gpr[25];
+    int processorID = getPRID();
+
+    if (!globalLock) {
+        ACQUIRE_LOCK(&globalLock);
+    }
+
+    if (pid == 0) {
+        toTerminate = currentProcess[processorID];
+        outChild(toTerminate);
+        recursiveKiller(toTerminate, 0);
+    } else {
+        // ricerca del pcb nella currentProcess, nella readyQueue o che aspetta bloccato su un semaforo
+        // CURRENTPROCESS
+        for (int i = 0; i < NCPU; i++) {
+            if (currentProcess[i]->p_pid == pid) {
+                toTerminate = currentProcess[i];
+                outChild(toTerminate);
+                recursiveKiller(toTerminate, 0);
+                break;
+            }
+        }
+
+        // READYQUEUE
+        if (toTerminate == NULL) {
+            pcb_t* iter = NULL;
+            list_for_each_entry(iter, &readyQueue, p_list) {
+                if (iter->p_pid == pid) {
+                    toTerminate = iter;
+                    break;
+                }
+            }
+            outChild(toTerminate);
+            recursiveKiller(toTerminate, 1);
+        }
+
+        // BLOCKED ON A SEMAPHORE
+        if (toTerminate == NULL) {
+            semd_t* semaphoreIter = NULL;
+            pcb_t* blockedProcIter = NULL;
+            int foundFlag = 0;
+            //CICLARE SU TUTTI I SEMAFORI ATTIVI, PER OGNI SEMAFORO CERCARE NELLA LISTA DI PCB BLOCCATI
+            list_for_each_entry(semaphoreIter, &semd_h, s_link) {
+                list_for_each_entry(blockedProcIter, &semaphoreIter->s_procq, p_list) {
+                    if (blockedProcIter->p_pid == pid) {
+                        toTerminate = blockedProcIter;
+                        foundFlag = 1;
+                        break;
+                    }
+                }
+                if (foundFlag) {
+                    outChild(toTerminate);
+                    recursiveKiller(toTerminate, 2);
+                    break;
+                }
+            }
+        }
+        // PCB TROVATOOOOOOOO
+    }
 }
 
 void passeren(int *semAdd) {
