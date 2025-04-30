@@ -125,7 +125,7 @@ void terminateProcess(state_t *statep) {
             semd_t* semaphoreIter = NULL;
             pcb_t* blockedProcIter = NULL;
             int foundFlag = 0;
-            //CICLARE SU TUTTI I SEMAFORI ATTIVI, PER OGNI SEMAFORO CERCARE NELLA LISTA DI PCB BLOCCATI
+            // CICLARE SU TUTTI I SEMAFORI ATTIVI, PER OGNI SEMAFORO CERCARE NELLA LISTA DI PCB BLOCCATI
             list_for_each_entry(semaphoreIter, &semd_h, s_link) {
                 list_for_each_entry(blockedProcIter, &semaphoreIter->s_procq, p_list) {
                     if (blockedProcIter->p_pid == pid) {
@@ -141,13 +141,62 @@ void terminateProcess(state_t *statep) {
                 }
             }
         }
+        // TODO: RICORDATI DI GESTIRE IL RITORNO DALLA SYSTEMCALL
         // PCB TROVATOOOOOOOO
     }
 }
 
-void passeren(int *semAdd) {
+void systemcallBlock(state_t *statep) {
+    statep->pc_epc += WS;
+    currentProcess[getPRID()]->p_s = *statep;
+    // TODO: GESTIONE DEL CAMPO p_time
+    scheduler();
+}
+
+void passeren(state_t *statep) {
     /*
-     * se semAdd = 1 allora decrementa il semaforo e fai una LDST sul pcb bloccato su quel semaforo
-     * in caso contrario devi fermare il processo su quel semaforo in qualche modo (con una wait? boh)
+     * se semAdd = 1 allora decrementa il semaforo e fai ripartire il pcb bloccato su quel semaforo
+     * in caso contrario devi fermare il processo su quel semaforo in qualche modo
      */
+    // il puntatore in sè equivale alla chiave del semaforo, il contenuto della cella è il valore effettivo del semaforo
+    int *semadd = statep->gpr[25];
+    if (*semadd == 0) {
+        ACQUIRE_LOCK(&globalLock);
+        insertBlocked(semadd, currentProcess[getPRID()]);
+        // il release_lock va messo prima
+        RELEASE_LOCK(&globalLock);
+        systemcallBlock(statep);
+    } else {
+        ACQUIRE_LOCK(&globalLock);
+        *semadd--;
+        pcb_t *unblocked = removeBlocked(semadd);
+        if (unblocked != NULL) {
+            insertProcQ(&readyQueue, unblocked);
+        }
+        // qui forse manca qualcosa (?)
+        statep->pc_epc += WS;
+        RELEASE_LOCK(&globalLock);
+    }
+}
+
+void verhogen(state_t *statep) {
+    int *semadd = statep->gpr[25];
+
+    if (*semadd == 0) {
+        ACQUIRE_LOCK(&globalLock);
+        *semadd++;
+        pcb_t *unblocked = removeBlocked(semadd);
+        if (unblocked != NULL) {
+            insertProcQ(&readyQueue, unblocked);
+            semadd--;
+        }
+        // qui forse manca qualcosa (?)
+        statep->pc_epc += WS;
+        RELEASE_LOCK(&globalLock);
+    } else { // il processo si deve bloccare!
+        ACQUIRE_LOCK(&globalLock);
+        insertBlocked(semadd, currentProcess[getPRID()]);
+        RELEASE_LOCK(&globalLock);
+        systemcallBlock(statep);
+    }
 }
