@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "../phase1/headers/pcb.h"
 extern int processCount;         // quanti processi ci sono in giro
 extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
@@ -18,14 +20,14 @@ void exceptionHandler() {
     int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
 
     state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);    // Prendiamo lo stato del processo che ha generato l'eccezione
-    
+
     unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
-    
+
     if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
         handleInterrupt();
         return;
     }
-    
+
     unsigned int exc_code = cause & CAUSE_EXCCODE_MASK; //CAUSE_EXCCODE_MASK è una maschera per prendere i bit 0-5 della causa dell'eccezione
 
     switch(exc_code) {
@@ -33,15 +35,15 @@ void exceptionHandler() {
         case 11: // SYSCALL
             // handleSyscall(exc_state);  // il gestore di syscall
             break;
-            
+
         case 24:
         case 25:
         case 26:
         case 27:
         case 28:
-            PANIC();  // per ora scrivo solo panic perché serve una parte dopo 
+            PANIC();  // per ora scrivo solo panic perché serve una parte dopo
             break;
-            
+
         default: // tutto gli altri casi (Program Trap)
             PANIC();  // altro panic
             break;
@@ -93,7 +95,6 @@ void terminateProcess(state_t *statep) {
 
     if (pid == 0) {
         toTerminate = currentProcess[processorID];
-        outChild(toTerminate);
         recursiveKiller(toTerminate, 0);
     } else {
         // ricerca del pcb nella currentProcess, nella readyQueue o che aspetta bloccato su un semaforo
@@ -101,7 +102,6 @@ void terminateProcess(state_t *statep) {
         for (int i = 0; i < NCPU; i++) {
             if (currentProcess[i]->p_pid == pid) {
                 toTerminate = currentProcess[i];
-                outChild(toTerminate);
                 recursiveKiller(toTerminate, 0);
                 break;
             }
@@ -116,39 +116,26 @@ void terminateProcess(state_t *statep) {
                     break;
                 }
             }
-            outChild(toTerminate);
             recursiveKiller(toTerminate, 1);
         }
 
         // BLOCKED ON A SEMAPHORE
         if (toTerminate == NULL) {
-            semd_t* semaphoreIter = NULL;
-            pcb_t* blockedProcIter = NULL;
-            int foundFlag = 0;
-            // CICLARE SU TUTTI I SEMAFORI ATTIVI, PER OGNI SEMAFORO CERCARE NELLA LISTA DI PCB BLOCCATI
-            list_for_each_entry(semaphoreIter, &semd_h, s_link) {
-                list_for_each_entry(blockedProcIter, &semaphoreIter->s_procq, p_list) {
-                    if (blockedProcIter->p_pid == pid) {
-                        toTerminate = blockedProcIter;
-                        foundFlag = 1;
-                        break;
-                    }
-                }
-                if (foundFlag) {
-                    outChild(toTerminate);
-                    recursiveKiller(toTerminate, 2);
-                    break;
-                }
-            }
+            toTerminate = outBlockedPid(pid);
+            recursiveKiller(toTerminate, 2);
+            // TODO: RICORDATI DI GESTIRE IL RITORNO DALLA SYSTEMCALL
+            // PCB TROVATOOOOOOOO
         }
-        // TODO: RICORDATI DI GESTIRE IL RITORNO DALLA SYSTEMCALL
-        // PCB TROVATOOOOOOOO
     }
+    statep->pc_epc += WS;
+    LDST(statep);
+    RELEASE_LOCK(&globalLock);
 }
 
 void systemcallBlock(state_t *statep) {
     statep->pc_epc += WS;
-    currentProcess[getPRID()]->p_s = *statep;
+    // pacco non credo sia giusto aiuto, qualcuno mi aiuti vi prego non ce la faccio più
+    LDST(statep);
     // TODO: GESTIONE DEL CAMPO p_time
     scheduler();
 }
@@ -159,44 +146,79 @@ void passeren(state_t *statep) {
      * in caso contrario devi fermare il processo su quel semaforo in qualche modo
      */
     // il puntatore in sè equivale alla chiave del semaforo, il contenuto della cella è il valore effettivo del semaforo
-    int *semadd = statep->gpr[25];
-    if (*semadd == 0) {
+    int semadd = statep->gpr[25];
+    if (semadd == 0) {
         ACQUIRE_LOCK(&globalLock);
-        insertBlocked(semadd, currentProcess[getPRID()]);
+        insertBlocked(&semadd, currentProcess[getPRID()]);
         // il release_lock va messo prima
         RELEASE_LOCK(&globalLock);
         systemcallBlock(statep);
     } else {
         ACQUIRE_LOCK(&globalLock);
-        *semadd--;
-        pcb_t *unblocked = removeBlocked(semadd);
+        semadd--;
+        pcb_t *unblocked = removeBlocked(&semadd);
         if (unblocked != NULL) {
             insertProcQ(&readyQueue, unblocked);
         }
-        // qui forse manca qualcosa (?)
         statep->pc_epc += WS;
+        LDST(statep);
         RELEASE_LOCK(&globalLock);
     }
 }
 
 void verhogen(state_t *statep) {
-    int *semadd = statep->gpr[25];
+    int semadd = statep->gpr[25];
 
-    if (*semadd == 0) {
+    if (semadd == 0) {
         ACQUIRE_LOCK(&globalLock);
-        *semadd++;
-        pcb_t *unblocked = removeBlocked(semadd);
+        semadd++;
+        pcb_t *unblocked = removeBlocked(&semadd);
         if (unblocked != NULL) {
             insertProcQ(&readyQueue, unblocked);
             semadd--;
         }
-        // qui forse manca qualcosa (?)
         statep->pc_epc += WS;
+        LDST(statep);
         RELEASE_LOCK(&globalLock);
     } else { // il processo si deve bloccare!
         ACQUIRE_LOCK(&globalLock);
-        insertBlocked(semadd, currentProcess[getPRID()]);
+        insertBlocked(&semadd, currentProcess[getPRID()]);
         RELEASE_LOCK(&globalLock);
         systemcallBlock(statep);
     }
 }
+
+// not so sure di queste, da rivedere
+
+// currentTime dovrebbe contenere la quantità di tempo in microsecondi a partire dal boot del sistema
+void getCPUTime(state_t *statep) {
+    int ppid = getPRID();
+    cpu_t currentTime;
+    STCK(currentTime);
+    statep->gpr[24] = currentTime + currentProcess[ppid]->p_time;
+}
+
+void getSupportData(state_t *statep) {
+    ACQUIRE_LOCK(&globalLock);
+    pcb_t *currentProc = currentProcess[getPRID()];
+    statep->gpr[24] = (memaddr)currentProc->p_supportStruct;
+    statep->pc_epc += WS;
+    LDST(statep);
+    RELEASE_LOCK(&globalLock);
+
+}
+
+void getProcessID(state_t *statep) {
+    ACQUIRE_LOCK(&globalLock);
+    int parent = statep->gpr[25];
+    pcb_t *currentProc = currentProcess[getPRID()];
+    if (parent == 0) {
+        statep->gpr[24] = currentProc->p_pid;
+    } else {
+        statep->gpr[24] = currentProc->p_parent->p_pid;
+    }
+    statep->pc_epc += WS;
+    LDST(statep);
+    RELEASE_LOCK(&globalLock);
+}
+
