@@ -1,5 +1,3 @@
-#include <string.h>
-
 #include "../phase1/headers/pcb.h"
 extern int processCount;         // quanti processi ci sono in giro
 extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
@@ -198,6 +196,7 @@ void getCPUTime(state_t *statep) {
     statep->gpr[24] = currentTime + currentProcess[ppid]->p_time;
 }
 
+
 void getSupportData(state_t *statep) {
     ACQUIRE_LOCK(&globalLock);
     pcb_t *currentProc = currentProcess[getPRID()];
@@ -205,7 +204,6 @@ void getSupportData(state_t *statep) {
     statep->pc_epc += WS;
     LDST(statep);
     RELEASE_LOCK(&globalLock);
-
 }
 
 void getProcessID(state_t *statep) {
