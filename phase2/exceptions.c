@@ -6,7 +6,7 @@ extern struct list_head semd_h;
 
 
 void handleInterrupt() {
-    //  Qui ci va la logica per capire se è il PLT (timer locale),se sì, reinserire il processo in ready queue e chiamare lo scheduler
+    //  Qui ci va la logica per capire se è il PLT (timer locale), se sì, reinserire il processo in ready queue e chiamare lo scheduler
     //  se è l'interval time fare il tick del pseudo-clock
     //  se è un dispositivo svegliare chi stava aspettando
     //  che a questo punto scriviamo direttamente in interrupt.c
@@ -22,6 +22,8 @@ void exceptionHandler() {
     unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
 
     if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
+        klog_print("qua dentro entra in un bel loooooooop");
+
         handleInterrupt();
         return;
     }
@@ -130,11 +132,24 @@ void terminateProcess(state_t *statep) {
     RELEASE_LOCK(&globalLock);
 }
 
-void systemcallBlock(state_t *statep) {
+void systemcallBlock(state_t *statep, int ppid) {
     statep->pc_epc += WS;
     // pacco non credo sia giusto aiuto, qualcuno mi aiuti vi prego non ce la faccio più
-    LDST(statep);
+
+    // DIO CANE, PORCO, NON POSSO COPIARLO CON UNA LINEA DI CODICE E MI TOCCA FARE TUTTA QUESTA ROBA A MANO MANNAGGIA A DIO
+    currentProcess[ppid]->p_s.cause = statep->cause;
+    currentProcess[ppid]->p_s.entry_hi = statep->entry_hi;
+    currentProcess[ppid]->p_s.mie = statep->mie;
+    currentProcess[ppid]->p_s.pc_epc = statep->pc_epc;
+    currentProcess[ppid]->p_s.status = statep->status;
+    for (int i = 0; i < STATE_GPR_LEN; i++) {
+        currentProcess[ppid]->p_s.gpr[i] = statep->gpr[i];
+    }
+
     // TODO: GESTIONE DEL CAMPO p_time
+    ACQUIRE_LOCK(&globalLock);
+    currentProcess[ppid] = NULL;
+    RELEASE_LOCK(&globalLock);
     scheduler();
 }
 
@@ -150,7 +165,7 @@ void passeren(state_t *statep) {
         insertBlocked(&semadd, currentProcess[getPRID()]);
         // il release_lock va messo prima
         RELEASE_LOCK(&globalLock);
-        systemcallBlock(statep);
+        systemcallBlock(statep, getPRID());
     } else {
         ACQUIRE_LOCK(&globalLock);
         semadd--;
@@ -182,7 +197,7 @@ void verhogen(state_t *statep) {
         ACQUIRE_LOCK(&globalLock);
         insertBlocked(&semadd, currentProcess[getPRID()]);
         RELEASE_LOCK(&globalLock);
-        systemcallBlock(statep);
+        systemcallBlock(statep, getPRID());
     }
 }
 
@@ -195,6 +210,9 @@ void getCPUTime(state_t *statep) {
     STCK(currentTime);
     statep->gpr[24] = currentTime + currentProcess[ppid]->p_time;
 }
+
+// il 49esimo device equivale allo pseudo clock, per accedervi utilizza la posizione 48
+void waitForClock(state_t *statep) {}
 
 
 void getSupportData(state_t *statep) {
