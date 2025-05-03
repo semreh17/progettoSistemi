@@ -7,41 +7,79 @@ extern struct pcb_t *currentProcess[NCPU];
 extern struct list_head readyQueue;
 extern void scheduler();
 
-#define BITMAP_BASE 0x10000040
+void interruptHandler(int cause, state_t *ExeptionOccurred) {
+    
+    if (CAUSE_IP_GET(cause, IL_DISK))
+        dev_interrupt_handler(IL_DISK, cause, ExeptionOccurred);
 
-void interrupt_handler() {
-   
-    ACQUIRE_LOCK(&globalLock);
+    else if (CAUSE_IP_GET(cause, IL_FLASH))
+        dev_interrupt_handler(IL_FLASH, cause, ExeptionOccurred);
 
-//Tip: to figure out the current interrupt exception code, you can use a bitwise AND betweengetCAUSE() and the constants CAUSE_EXCCODE_MASK.
-    unsigned int cause = getCAUSE();
-    unsigned int exc_code = cause & CAUSE_EXCCODE_MASK;                                                         
-    int intLineNo = 0;
+    else if (CAUSE_IP_GET(cause, IL_ETHERNET))
+        dev_interrupt_handler(IL_ETHERNET, cause, ExeptionOccurred);
 
-    /*The Interrupting Devices Bit Map is a read-only five word area located starting from address
-    0x1000.0040. Interrupting Devices Bit Map words have this format: when bit i in word j is set to
-    one then device i attached to interrupt line j + 3 has a pending interrupt, see Table 3. An interrupt
-    pending bit is turned on automatically by the hardware whenever a device’s controller asserts the
-    interrupt line to which it is attached. The interrupt will remain pending –the pending interrupt bit
-    will remain on– until the interrupt is acknowledged. Interrupts for peripheral devices are acknowledged
-    by writing the acknowledge command code in the appropriate device’s device register. */
+    else if (CAUSE_IP_GET(cause, IL_PRINTER))
+        dev_interrupt_handler(IL_PRINTER, cause, ExeptionOccurred);
 
-    switch(exc_code) {
-        case 7:  intLineNo = 1; break;  // PLT (IL_CPUTIMER)
-        case 3:  intLineNo = 2; break;  // Interval Timer (IL_TIMER)
-        case 17: intLineNo = 3; break;  // Disk (IL_DISK)
-        case 18: intLineNo = 4; break;  // Flash (IL_FLASH)
-        case 19: intLineNo = 5; break;  // Ethernet (IL_ETHERNET)
-        case 20: intLineNo = 6; break;  // Printer (IL_PRINTER)
-        case 21: intLineNo = 7; break;  // Terminal (IL_TERMINAL)
-        default: goto CappoHaiSbagliato;   //errore nell'exception handler (si lo so il goto fa merda)   
+    else if (CAUSE_IP_GET(cause, IL_TERMINAL))
+        dev_interrupt_handler(IL_TERMINAL, cause, ExeptionOccurred);
+    
+    else if (CAUSE_IP_GET(cause, IL_CPUTIMER))
+        LocalTimerInterrupt(ExeptionOccurred);
+
+    else if (CAUSE_IP_GET(cause, IL_TIMER))
+        SistemWideIntervalTimer(ExeptionOccurred);
+
+    //else ERROR(?)
+  }
+
+
+
+  
+void dev_interrup_handler(int IntLineNo, state_t *statep) {
+
+    devregarea_t *dev_area = (devregarea_t *)RAMBASEADDR; //accesso all'area dei registri dispositivo
+      
+    unsigned int dev_bitmap = dev_area->interrupt_dev[IntLineNo - 3];
+      
+    unsigned int DevNo; //ricerca di DevNo per priority
+    if (dev_bitmap & DEV7ON) DevNo = 7;
+
+    else if (dev_bitmap & DEV6ON) DevNo = 6;
+
+    else if (dev_bitmap & DEV5ON) DevNo = 5;
+
+    else if (dev_bitmap & DEV4ON) DevNo = 4;
+
+    else if (dev_bitmap & DEV3ON) DevNo = 3;
+
+    else if (dev_bitmap & DEV2ON) DevNo = 2;
+
+    else if (dev_bitmap & DEV1ON) DevNo = 1;
+
+    else DevNo = 0;
+  
+    memaddr devAddrBase = START_DEVREG + ((IntLineNo - 3) * 0x80) + (DevNo * 0x10); //scritta così nelle spec
+      
+    termreg_t *term_reg = (termreg_t *)devAddrBase; //salvare status e mandare ACK, leggendo da types.h mi sembra corretto ma boh
+    unsigned int status = term_reg->recv_status;  
+    term_reg->recv_command = ACK;
+  
+    verhogen(*statep); //perform a V operation on the Nucleus maintained semaphore associated with this (sub)device.(???)
+  
+
+    //5
+
+
+    //6
+
+
+
+    if (currentProcess[getPRID()]) {
+        LDST(statep);
+    } else {
+        scheduler();
     }
-
-
-
-CappoHaiSbagliato:
-    //non so se dovrebbe esserci altra roba qui
-    RELEASE_LOCK(&globalLock);
 }
 
 
