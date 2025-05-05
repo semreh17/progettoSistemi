@@ -6,12 +6,74 @@ extern struct list_head semd_h;
 
 
 void handleInterrupt() {
-    //  Qui ci va la logica per capire se è il PLT (timer locale), se sì, reinserire il processo in ready queue e chiamare lo scheduler
-    //  se è l'interval time fare il tick del pseudo-clock
-    //  se è un dispositivo svegliare chi stava aspettando
-    //  che a questo punto scriviamo direttamente in interrupt.c
+    int core_id = getPRID();
+    state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);
+    unsigned int cause = getCAUSE();
+    unsigned int exc_code = cause & CAUSE_EXCCODE_MASK;
 
-    LDST(GET_EXCEPTION_STATE_PTR(getPRID()));
+    ACQUIRE_LOCK(&globalLock);
+
+    // 1. Process Local Timer (PLT) - Codice 7 (IL_CPUTIMER)
+    if (exc_code == IL_CPUTIMER) {
+        if (currentProcess[core_id]) {
+            // Salva stato corrente nel PCB
+            currentProcess[core_id]->p_s = *exc_state;
+            
+            // Aggiorna tempo CPU usando campo p_time esistente
+            cpu_t now;
+            STCK(now);
+            currentProcess[core_id]->p_time += (now - *((cpu_t *)TODLOADDR)) / (*((cpu_t *)TIMESCALEADDR));
+            
+            // Reinserisce in ready queue
+            insertProcQ(&readyQueue, currentProcess[core_id]);
+            currentProcess[core_id] = NULL;
+        }
+        
+        // Resetta timer e chiama scheduler
+        setTIMER(TIMESLICE * (*((cpu_t *)TIMESCALEADDR)));
+        RELEASE_LOCK(&globalLock);
+        scheduler();
+        return;
+    }
+    
+    // 2. Interval Timer - Codice 3 (IL_TIMER)
+    if (exc_code == IL_TIMER) {
+        // Resetta timer a 100ms (PSECOND)
+        *((cpu_t *)INTERVALTMR) = PSECOND;
+        
+        // Sblocca processi in attesa usando SEMDEVLEN-1 come ID
+        pcb_t *unblocked;
+        while ((unblocked = removeBlocked((memaddr)(SEMDEVLEN-1))) != NULL) {
+            insertProcQ(&readyQueue, unblocked);
+        }
+        
+        RELEASE_LOCK(&globalLock);
+        LDST(exc_state);
+        return;
+    }
+    
+    // 3. Interrupt I/O - Codici 17-21 (IL_DISK a IL_TERMINAL)
+    if (exc_code >= IL_DISK && exc_code <= IL_TERMINAL) {
+        int dev_line = exc_code - IL_DISK + 3;
+        int *dev_addr = (int *)(START_DEVREG + (dev_line-3)*0x80);
+        
+        // Acknowledge interrupt
+        *dev_addr = RECEIVEMSG;
+        
+        // Sblocca processo in attesa
+        pcb_t *unblocked = removeBlocked((memaddr)dev_addr);
+        if (unblocked) {
+            unblocked->p_s.gpr[4] = *dev_addr; // a0 = status
+            insertProcQ(&readyQueue, unblocked);
+        }
+        
+        RELEASE_LOCK(&globalLock);
+        LDST(exc_state);
+        return;
+    }
+    
+    RELEASE_LOCK(&globalLock);
+    PANIC();
 }
 
 void exceptionHandler() {
@@ -34,6 +96,44 @@ void exceptionHandler() {
         case 8:  // SYSCALL
         case 11: // SYSCALL
             // handleSyscall(exc_state);  // il gestore di syscall
+            int syscall_num = exc_state->reg_a0;
+            switch (syscall_num) {
+            case TERMPROCESS:    // -2
+                terminateProcess(exc_state);
+                return;  // Non ritornare al processo
+            
+            case PASSEREN:       // -3
+                passeren(exc_state);
+                return;
+            
+            case VERHOGEN:       // -4
+                verhogen(exc_state);
+                return;
+            
+            case DOIO:           // -5
+                // Implementa operazione I/O... credo in te Hermes
+                return;
+            
+            case GETTIME:        // -6
+                getCPUTime(exc_state);
+                break;
+            
+            case CLOCKWAIT:      // -7
+                waitForClock(exc_state);
+                return;
+            
+            case GETSUPPORTPTR:  // -8
+                getSupportData(exc_state);
+                break;
+            
+            case GETPROCESSID:   // -9
+                getProcessID(exc_state);
+                break;
+            
+            default:
+                PANIC();  // Syscall non riconosciuta
+                return;
+        }
             break;
 
         case 24:
