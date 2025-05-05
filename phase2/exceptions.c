@@ -1,9 +1,18 @@
 #include "../phase1/headers/pcb.h"
+#include <stddef.h>
 extern int processCount;         // quanti processi ci sono in giro
 extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
 extern struct list_head readyQueue;  // La fila dei processi pronti
 extern struct list_head semd_h;
+extern int deviceSemaphores[NRSEMAPHORES];
 
+void *memcpy(void *dest, const void *src, unsigned int n)
+{
+    for (unsigned int i = 0; i < n; i++)
+    {
+        ((char*)dest)[i] = ((char*)src)[i];
+    }
+}
 
 void handleInterrupt() {
     int core_id = getPRID();
@@ -18,6 +27,8 @@ void handleInterrupt() {
         if (currentProcess[core_id]) {
             // Salva stato corrente nel PCB
             currentProcess[core_id]->p_s = *exc_state;
+            memcpy(&currentProcess[core_id]->p_s, exc_state, sizeof(state_t));
+
             
             // Aggiorna tempo CPU usando campo p_time esistente
             cpu_t now;
@@ -74,80 +85,6 @@ void handleInterrupt() {
     
     RELEASE_LOCK(&globalLock);
     PANIC();
-}
-
-void exceptionHandler() {
-    int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
-
-    state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);    // Prendiamo lo stato del processo che ha generato l'eccezione
-
-    unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
-
-    if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
-        klog_print("qua dentro entra in un bel loooooooop");
-
-        handleInterrupt();
-        return;
-    }
-
-    unsigned int exc_code = cause & CAUSE_EXCCODE_MASK; //CAUSE_EXCCODE_MASK è una maschera per prendere i bit 0-5 della causa dell'eccezione
-
-    switch(exc_code) {
-        case 8:  // SYSCALL
-        case 11: // SYSCALL
-            // handleSyscall(exc_state);  // il gestore di syscall
-            int syscall_num = exc_state->reg_a0;
-            switch (syscall_num) {
-            case TERMPROCESS:    // -2
-                terminateProcess(exc_state);
-                return;  // Non ritornare al processo
-            
-            case PASSEREN:       // -3
-                passeren(exc_state);
-                return;
-            
-            case VERHOGEN:       // -4
-                verhogen(exc_state);
-                return;
-            
-            case DOIO:           // -5
-                // Implementa operazione I/O... credo in te Hermes
-                return;
-            
-            case GETTIME:        // -6
-                getCPUTime(exc_state);
-                break;
-            
-            case CLOCKWAIT:      // -7
-                waitForClock(exc_state);
-                return;
-            
-            case GETSUPPORTPTR:  // -8
-                getSupportData(exc_state);
-                break;
-            
-            case GETPROCESSID:   // -9
-                getProcessID(exc_state);
-                break;
-            
-            default:
-                PANIC();  // Syscall non riconosciuta
-                return;
-        }
-            break;
-
-        case 24:
-        case 25:
-        case 26:
-        case 27:
-        case 28:
-            PANIC();  // per ora scrivo solo panic perché serve una parte dopo
-            break;
-
-        default: // tutto gli altri casi (Program Trap)
-            PANIC();  // altro panic
-            break;
-    }
 }
 
 /*
@@ -237,14 +174,16 @@ void systemcallBlock(state_t *statep, int ppid) {
     // pacco non credo sia giusto aiuto, qualcuno mi aiuti vi prego non ce la faccio più
 
     // DIO CANE, PORCO, NON POSSO COPIARLO CON UNA LINEA DI CODICE E MI TOCCA FARE TUTTA QUESTA ROBA A MANO MANNAGGIA A DIO
-    currentProcess[ppid]->p_s.cause = statep->cause;
-    currentProcess[ppid]->p_s.entry_hi = statep->entry_hi;
-    currentProcess[ppid]->p_s.mie = statep->mie;
-    currentProcess[ppid]->p_s.pc_epc = statep->pc_epc;
-    currentProcess[ppid]->p_s.status = statep->status;
-    for (int i = 0; i < STATE_GPR_LEN; i++) {
-        currentProcess[ppid]->p_s.gpr[i] = statep->gpr[i];
-    }
+    memcpy(&currentProcess[ppid]->p_s, statep, sizeof(state_t));
+
+    // currentProcess[ppid]->p_s.cause = statep->cause;
+    // currentProcess[ppid]->p_s.entry_hi = statep->entry_hi;
+    // currentProcess[ppid]->p_s.mie = statep->mie;
+    // currentProcess[ppid]->p_s.pc_epc = statep->pc_epc;
+    // currentProcess[ppid]->p_s.status = statep->status;
+    // for (int i = 0; i < STATE_GPR_LEN; i++) {
+    //     currentProcess[ppid]->p_s.gpr[i] = statep->gpr[i];
+    // }
 
     // TODO: GESTIONE DEL CAMPO p_time
     ACQUIRE_LOCK(&globalLock);
@@ -300,8 +239,11 @@ void verhogen(state_t *statep) {
         systemcallBlock(statep, getPRID());
     }
 }
-
 // not so sure di queste, da rivedere
+
+void doIO(state_t *statep) {
+
+}
 
 // currentTime dovrebbe contenere la quantità di tempo in microsecondi a partire dal boot del sistema
 void getCPUTime(state_t *statep) {
@@ -309,15 +251,24 @@ void getCPUTime(state_t *statep) {
     cpu_t currentTime;
     STCK(currentTime);
     statep->gpr[24] = currentTime + currentProcess[ppid]->p_time;
+    statep->pc_epc += WS;
+    LDST(statep);
 }
 
 // il 49esimo device equivale allo pseudo clock, per accedervi utilizza la posizione 48
-void waitForClock(state_t *statep) {}
+// blocca il processo sul semaforo dello pseudo-clock
+void waitForClock(state_t *statep) {
+    ACQUIRE_LOCK(&globalLock);
+    insertBlocked(&deviceSemaphores[48], currentProcess[getPRID()]);
+    RELEASE_LOCK(&globalLock);
+    // systemcallBlock(statep, getPRID());
+}
 
 
 void getSupportData(state_t *statep) {
     ACQUIRE_LOCK(&globalLock);
     pcb_t *currentProc = currentProcess[getPRID()];
+    // faccio il cast con memaddr rendendolo un unsigned int
     statep->gpr[24] = (memaddr)currentProc->p_supportStruct;
     statep->pc_epc += WS;
     LDST(statep);
@@ -338,3 +289,77 @@ void getProcessID(state_t *statep) {
     RELEASE_LOCK(&globalLock);
 }
 
+
+void exceptionHandler() {
+    int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
+
+    state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);    // Prendiamo lo stato del processo che ha generato l'eccezione
+
+    unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
+
+    if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
+        klog_print("qua dentro entra in un bel loooooooop");
+
+        handleInterrupt();
+        return;
+    }
+
+    unsigned int exc_code = cause & CAUSE_EXCCODE_MASK; //CAUSE_EXCCODE_MASK è una maschera per prendere i bit 0-5 della causa dell'eccezione
+
+    switch(exc_code) {
+        case 8:  // SYSCALL
+        case 11: // SYSCALL
+            // handleSyscall(exc_state);  // il gestore di syscall
+            int syscall_num = exc_state->reg_a0;
+            switch (syscall_num) {
+            case TERMPROCESS:    // -2
+                terminateProcess(exc_state);
+                return;  // Non ritornare al processo
+
+            case PASSEREN:       // -3
+                passeren(exc_state);
+                return;
+
+            case VERHOGEN:       // -4
+                verhogen(exc_state);
+                return;
+
+            case DOIO:           // -5
+                // Implementa operazione I/O... credo in te Hermes
+                return;
+
+            case GETTIME:        // -6
+                getCPUTime(exc_state);
+                break;
+
+            case CLOCKWAIT:      // -7
+                waitForClock(exc_state);
+                return;
+
+            case GETSUPPORTPTR:  // -8
+                getSupportData(exc_state);
+                break;
+
+            case GETPROCESSID:   // -9
+                getProcessID(exc_state);
+                break;
+
+            default:
+                PANIC();  // Syscall non riconosciuta
+                return;
+        }
+            break;
+
+        case 24:
+        case 25:
+        case 26:
+        case 27:
+        case 28:
+            PANIC();  // per ora scrivo solo panic perché serve una parte dopo
+            break;
+
+        default: // tutto gli altri casi (Program Trap)
+            PANIC();  // altro panic
+            break;
+    }
+}
