@@ -6,6 +6,8 @@ extern struct list_head readyQueue;  // La fila dei processi pronti
 extern struct list_head semd_h;
 extern int deviceSemaphores[NRSEMAPHORES];
 
+extern void klog_print();
+
 void *memcpy(void *dest, const void *src, unsigned int n)
 {
     for (unsigned int i = 0; i < n; i++)
@@ -84,6 +86,7 @@ void handleInterrupt() {
     }
     
     RELEASE_LOCK(&globalLock);
+    klog_print("ciao qua esco panico");
     PANIC();
 }
 
@@ -160,7 +163,6 @@ void terminateProcess(state_t *statep) {
         if (toTerminate == NULL) {
             toTerminate = outBlockedPid(pid);
             recursiveKiller(toTerminate, 2);
-            // TODO: RICORDATI DI GESTIRE IL RITORNO DALLA SYSTEMCALL
             // PCB TROVATOOOOOOOO
         }
     }
@@ -185,7 +187,11 @@ void systemcallBlock(state_t *statep, int ppid) {
     //     currentProcess[ppid]->p_s.gpr[i] = statep->gpr[i];
     // }
 
-    // TODO: GESTIONE DEL CAMPO p_time
+    // time updated for current process
+    cpu_t currentTime;
+    STCK(currentTime);
+    currentProcess[ppid]->p_time += currentTime;
+
     ACQUIRE_LOCK(&globalLock);
     currentProcess[ppid] = NULL;
     RELEASE_LOCK(&globalLock);
@@ -261,7 +267,7 @@ void waitForClock(state_t *statep) {
     ACQUIRE_LOCK(&globalLock);
     insertBlocked(&deviceSemaphores[48], currentProcess[getPRID()]);
     RELEASE_LOCK(&globalLock);
-    // systemcallBlock(statep, getPRID());
+    systemcallBlock(statep, getPRID());
 }
 
 
@@ -345,6 +351,7 @@ void exceptionHandler() {
                 break;
 
             default:
+                klog_print("ciao qua esco panico");
                 PANIC();  // Syscall non riconosciuta
                 return;
         }
@@ -355,10 +362,12 @@ void exceptionHandler() {
         case 26:
         case 27:
         case 28:
+            klog_print("ciao qua esco panico");
             PANIC();  // per ora scrivo solo panic perché serve una parte dopo
             break;
 
         default: // tutto gli altri casi (Program Trap)
+            klog_print("ciao qua esco panico");
             PANIC();  // altro panic
             break;
     }
