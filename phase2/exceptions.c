@@ -318,6 +318,18 @@ void exceptionHandler() {
             // handleSyscall(exc_state);  // il gestore di syscall
             int syscall_num = exc_state->reg_a0;
             switch (syscall_num) {
+            case CREATEPROCESS: {  // -1
+                state_t *new_state = (state_t *)exc_state->reg_a1;
+                support_t *support = (support_t *)exc_state->reg_a3;
+                pcb_t *new_pcb = allocPcb();
+                if (new_pcb) {
+                    new_pcb->p_s = *new_state; 
+                    new_pcb->p_supportStruct = support;
+                    insertProcQ(&readyQueue, new_pcb);
+                    processCount++;
+                }
+               break;
+                }
             case TERMPROCESS:    // -2
                 terminateProcess(exc_state);
                 return;  // Non ritornare al processo
