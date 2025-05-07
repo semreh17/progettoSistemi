@@ -296,6 +296,35 @@ void getProcessID(state_t *statep) {
 }
 
 
+int last_pid = 0;  
+
+int generate_new_pid() {
+    return ++last_pid;  // Incrementa e restituisci PID univoco
+}
+// Servono a generare un PID univoco per ogni processo
+
+
+int createProcess(state_t *state, support_t *support) {
+    pcb_t *new_pcb = allocPcb();
+    if (!new_pcb) {
+        return -1;  // Errore: PCB non allocato
+    }
+
+    // Inizializzazione PCB
+    new_pcb->p_s = *state;
+    new_pcb->p_supportStruct = support;
+    new_pcb->p_pid = generate_new_pid();  // Funzione per PID univoci
+    new_pcb->p_time = 0;
+    new_pcb->p_semAdd = NULL;
+
+    // Gestione gerarchia e scheduling
+    insertChild(getCurrentProc(), new_pcb);
+    insertProcQ(&readyQueue, new_pcb);
+    processCount++;
+
+    return new_pcb->p_pid;  // Successo: restituisci PID
+}
+
 void exceptionHandler() {
     int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
 
@@ -318,18 +347,18 @@ void exceptionHandler() {
             // handleSyscall(exc_state);  // il gestore di syscall
             int syscall_num = exc_state->reg_a0;
             switch (syscall_num) {
-            case CREATEPROCESS: {  // -1
-                state_t *new_state = (state_t *)exc_state->reg_a1;
+            case CREATEPROCESS: {  // -1 
+                // Recupera argomenti dai registri
+                state_t *state = (state_t *)exc_state->reg_a1;
                 support_t *support = (support_t *)exc_state->reg_a3;
-                pcb_t *new_pcb = allocPcb();
-                if (new_pcb) {
-                    new_pcb->p_s = *new_state; 
-                    new_pcb->p_supportStruct = support;
-                    insertProcQ(&readyQueue, new_pcb);
-                    processCount++;
-                }
-               break;
-                }
+            
+                // Richiama la funzione dedicata
+                int pid = createProcess(state, support);
+            
+                // Imposta il valore di ritorno nel registro a0
+                exc_state->reg_a0 = pid;
+                break;
+            }
             case TERMPROCESS:    // -2
                 terminateProcess(exc_state);
                 return;  // Non ritornare al processo
