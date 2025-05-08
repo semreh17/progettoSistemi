@@ -7,6 +7,7 @@ extern struct pcb_t *currentProcess[NCPU];
 extern struct list_head readyQueue;
 extern void scheduler();
 extern int deviceSemaphores[NRSEMAPHORES];
+extern void memcpy();
 
 void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 
@@ -56,33 +57,30 @@ void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 
 
 
-static void LocalTimerInterrupt(state_t *ExeptionOccurred) {  //per IL_CPUTIMER
+static void LocalTimerInterrupt(state_t *statep) {  //per IL_CPUTIMER
 
-    int ID=getPRID();
+    ACQUIRE_LOCK(&globalLock);
+    
+    setTIMER(TIMESLICE);  //acknowledge PLT interrupt e reimposta timer
+    
+    pcb_t *current_pcb = currentProcess[getPRID()];
 
-    ACQUIRE_LOCK(&globalLock); //non so quando ci va quindi io lo metto sempre fanculo
+    if(current_pcb != NULL) {
+        
+        memcpy(&current_pcb->p_s, statep, sizeof(state_t)); //Copy the processor state of the current CPU at the time of the exception into the Current
+                                                            //Process’s PCB (p_s) of the current CPU.
+        
+        insertProcQ(&readyQueue, current_pcb);  //Place the Current Process on the Ready Queue; transitioning the Current Process from the
+                                                //“running” state to the “ready” state.
+        
+        currentProcess[getPRID()] = NULL;
 
-
-    // setPLT(0); //nelle spec c'è scritto di usare setTIMER ma non ne vedo il motivo quando c'è questa(?)
-
-
-    // updateCPUtime(currentProcess[ID]);
-
-    //Copy the processor state of the current CPU at the time of the exception into the Current
-    //Process’s PCB (p_s) of the current CPU.
-
-    // saveState(&(currentProcess[ID]->p_s), ExeptionOccurred);
-
-    //Place the Current Process on the Ready Queue; transitioning the Current Process from the
-    //“running” state to the “ready” state. (sto cambio di processo lo fa già la instertProcQ? perchè se non lo fa c'è da aggiungerlo)
-    insertProcQ(&readyQueue, currentProcess[ID]);
-    currentProcess[ID] = NULL;
-
-
+    }
+    
     RELEASE_LOCK(&globalLock);
+    
+    scheduler();    //Call the Scheduler.
 
-
-    scheduler(); //Call the Scheduler
 }
 
 
@@ -116,28 +114,28 @@ static void SistemWideIntervalTimer(state_t *ExeptionOccurred) {
 }
 
 
-void interruptHandler(int cause, state_t *ExceptionOccurred) {
+void interruptHandler(int cause, state_t *statep) {
 
     if (CAUSE_IP_GET(cause, IL_DISK))
-        dev_interrupt_handler(IL_DISK, cause, ExceptionOccurred);
+        dev_interrupt_handler(IL_DISK, statep);
 
     else if (CAUSE_IP_GET(cause, IL_FLASH))
-        dev_interrupt_handler(IL_FLASH, cause, ExceptionOccurred);
+        dev_interrupt_handler(IL_FLASH, statep);
 
     else if (CAUSE_IP_GET(cause, IL_ETHERNET))
-        dev_interrupt_handler(IL_ETHERNET, cause, ExceptionOccurred);
+        dev_interrupt_handler(IL_ETHERNET, statep);
 
     else if (CAUSE_IP_GET(cause, IL_PRINTER))
-        dev_interrupt_handler(IL_PRINTER, cause, ExceptionOccurred);
+        dev_interrupt_handler(IL_PRINTER, statep);
 
     else if (CAUSE_IP_GET(cause, IL_TERMINAL))
-        dev_interrupt_handler(IL_TERMINAL, cause, ExceptionOccurred);
+        dev_interrupt_handler(IL_TERMINAL, statep);
 
     else if (CAUSE_IP_GET(cause, IL_CPUTIMER))
-        LocalTimerInterrupt(ExceptionOccurred);
+        LocalTimerInterrupt(statep);
 
     else if (CAUSE_IP_GET(cause, IL_TIMER))
-        SistemWideIntervalTimer(ExceptionOccurred);
+        SistemWideIntervalTimer(statep);
 
     //else ERROR(?)
 }
