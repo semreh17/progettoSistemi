@@ -1,51 +1,93 @@
 #include "../phase1/headers/pcb.h"
+#include <stddef.h>
 extern int processCount;         // quanti processi ci sono in giro
 extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
 extern struct list_head readyQueue;  // La fila dei processi pronti
 extern struct list_head semd_h;
+extern int deviceSemaphores[NRSEMAPHORES];
 
+extern void klog_print();
 
-void handleInterrupt() {
-    //  Qui ci va la logica per capire se è il PLT (timer locale),se sì, reinserire il processo in ready queue e chiamare lo scheduler
-    //  se è l'interval time fare il tick del pseudo-clock
-    //  se è un dispositivo svegliare chi stava aspettando
-    //  che a questo punto scriviamo direttamente in interrupt.c
-
-    LDST(GET_EXCEPTION_STATE_PTR(getPRID()));
+void *memcpy(void *dest, const void *src, unsigned int n)
+{
+    for (unsigned int i = 0; i < n; i++)
+    {
+        ((char*)dest)[i] = ((char*)src)[i];
+    }
 }
 
-void exceptionHandler() {
-    int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
+void handleInterrupt() {
+    int core_id = getPRID();
+    state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);
+    unsigned int cause = getCAUSE();
+    unsigned int exc_code = cause & CAUSE_EXCCODE_MASK;
 
-    state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);    // Prendiamo lo stato del processo che ha generato l'eccezione
+    ACQUIRE_LOCK(&globalLock);
 
-    unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
+    // 1. Process Local Timer (PLT) - Codice 7 (IL_CPUTIMER)
+    if (exc_code == IL_CPUTIMER) {
+        if (currentProcess[core_id]) {
+            // Salva stato corrente nel PCB
+            currentProcess[core_id]->p_s = *exc_state;
+            memcpy(&currentProcess[core_id]->p_s, exc_state, sizeof(state_t));
 
-    if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
-        handleInterrupt();
+            
+            // Aggiorna tempo CPU usando campo p_time esistente
+            cpu_t now;
+            STCK(now);
+            currentProcess[core_id]->p_time += (now - *((cpu_t *)TODLOADDR)) / (*((cpu_t *)TIMESCALEADDR));
+            
+            // Reinserisce in ready queue
+            insertProcQ(&readyQueue, currentProcess[core_id]);
+            currentProcess[core_id] = NULL;
+        }
+        
+        // Resetta timer e chiama scheduler
+        setTIMER(TIMESLICE * (*((cpu_t *)TIMESCALEADDR)));
+        RELEASE_LOCK(&globalLock);
+        scheduler();
         return;
     }
-
-    unsigned int exc_code = cause & CAUSE_EXCCODE_MASK; //CAUSE_EXCCODE_MASK è una maschera per prendere i bit 0-5 della causa dell'eccezione
-
-    switch(exc_code) {
-        case 8:  // SYSCALL
-        case 11: // SYSCALL
-            // handleSyscall(exc_state);  // il gestore di syscall
-            break;
-
-        case 24:
-        case 25:
-        case 26:
-        case 27:
-        case 28:
-            PANIC();  // per ora scrivo solo panic perché serve una parte dopo
-            break;
-
-        default: // tutto gli altri casi (Program Trap)
-            PANIC();  // altro panic
-            break;
+    
+    // 2. Interval Timer - Codice 3 (IL_TIMER)
+    if (exc_code == IL_TIMER) {
+        // Resetta timer a 100ms (PSECOND)
+        *((cpu_t *)INTERVALTMR) = PSECOND;
+        
+        // Sblocca processi in attesa usando SEMDEVLEN-1 come ID
+        pcb_t *unblocked;
+        while ((unblocked = removeBlocked((memaddr)(SEMDEVLEN-1))) != NULL) {
+            insertProcQ(&readyQueue, unblocked);
+        }
+        
+        RELEASE_LOCK(&globalLock);
+        LDST(exc_state);
+        return;
     }
+    
+    // 3. Interrupt I/O - Codici 17-21 (IL_DISK a IL_TERMINAL)
+    if (exc_code >= IL_DISK && exc_code <= IL_TERMINAL) {
+        int dev_line = exc_code - IL_DISK + 3;
+        int *dev_addr = (int *)(START_DEVREG + (dev_line-3)*0x80);
+        
+        // Acknowledge interrupt
+        *dev_addr = RECEIVEMSG;
+        
+        // Sblocca processo in attesa
+        pcb_t *unblocked = removeBlocked((memaddr)dev_addr);
+        if (unblocked) {
+            unblocked->p_s.gpr[4] = *dev_addr; // a0 = status
+            insertProcQ(&readyQueue, unblocked);
+        }
+        
+        RELEASE_LOCK(&globalLock);
+        LDST(exc_state);
+        return;
+    }
+    
+    RELEASE_LOCK(&globalLock);
+    klog_print("ciao qua esco panico");
+    PANIC();
 }
 
 /*
@@ -121,7 +163,6 @@ void terminateProcess(state_t *statep) {
         if (toTerminate == NULL) {
             toTerminate = outBlockedPid(pid);
             recursiveKiller(toTerminate, 2);
-            // TODO: RICORDATI DI GESTIRE IL RITORNO DALLA SYSTEMCALL
             // PCB TROVATOOOOOOOO
         }
     }
@@ -130,11 +171,30 @@ void terminateProcess(state_t *statep) {
     RELEASE_LOCK(&globalLock);
 }
 
-void systemcallBlock(state_t *statep) {
+void systemcallBlock(state_t *statep, int ppid) {
     statep->pc_epc += WS;
     // pacco non credo sia giusto aiuto, qualcuno mi aiuti vi prego non ce la faccio più
-    LDST(statep);
-    // TODO: GESTIONE DEL CAMPO p_time
+
+    // DIO CANE, PORCO, NON POSSO COPIARLO CON UNA LINEA DI CODICE E MI TOCCA FARE TUTTA QUESTA ROBA A MANO MANNAGGIA A DIO
+    memcpy(&currentProcess[ppid]->p_s, statep, sizeof(state_t));
+
+    // currentProcess[ppid]->p_s.cause = statep->cause;
+    // currentProcess[ppid]->p_s.entry_hi = statep->entry_hi;
+    // currentProcess[ppid]->p_s.mie = statep->mie;
+    // currentProcess[ppid]->p_s.pc_epc = statep->pc_epc;
+    // currentProcess[ppid]->p_s.status = statep->status;
+    // for (int i = 0; i < STATE_GPR_LEN; i++) {
+    //     currentProcess[ppid]->p_s.gpr[i] = statep->gpr[i];
+    // }
+
+    // time updated for current process
+    cpu_t currentTime;
+    STCK(currentTime);
+    currentProcess[ppid]->p_time += currentTime;
+
+    ACQUIRE_LOCK(&globalLock);
+    currentProcess[ppid] = NULL;
+    RELEASE_LOCK(&globalLock);
     scheduler();
 }
 
@@ -150,7 +210,7 @@ void passeren(state_t *statep) {
         insertBlocked(&semadd, currentProcess[getPRID()]);
         // il release_lock va messo prima
         RELEASE_LOCK(&globalLock);
-        systemcallBlock(statep);
+        systemcallBlock(statep, getPRID());
     } else {
         ACQUIRE_LOCK(&globalLock);
         semadd--;
@@ -182,11 +242,14 @@ void verhogen(state_t *statep) {
         ACQUIRE_LOCK(&globalLock);
         insertBlocked(&semadd, currentProcess[getPRID()]);
         RELEASE_LOCK(&globalLock);
-        systemcallBlock(statep);
+        systemcallBlock(statep, getPRID());
     }
 }
-
 // not so sure di queste, da rivedere
+
+void doIO(state_t *statep) {
+
+}
 
 // currentTime dovrebbe contenere la quantità di tempo in microsecondi a partire dal boot del sistema
 void getCPUTime(state_t *statep) {
@@ -194,12 +257,24 @@ void getCPUTime(state_t *statep) {
     cpu_t currentTime;
     STCK(currentTime);
     statep->gpr[24] = currentTime + currentProcess[ppid]->p_time;
+    statep->pc_epc += WS;
+    LDST(statep);
+}
+
+// il 49esimo device equivale allo pseudo clock, per accedervi utilizza la posizione 48
+// blocca il processo sul semaforo dello pseudo-clock
+void waitForClock(state_t *statep) {
+    ACQUIRE_LOCK(&globalLock);
+    insertBlocked(&deviceSemaphores[48], currentProcess[getPRID()]);
+    RELEASE_LOCK(&globalLock);
+    systemcallBlock(statep, getPRID());
 }
 
 
 void getSupportData(state_t *statep) {
     ACQUIRE_LOCK(&globalLock);
     pcb_t *currentProc = currentProcess[getPRID()];
+    // faccio il cast con memaddr rendendolo un unsigned int
     statep->gpr[24] = (memaddr)currentProc->p_supportStruct;
     statep->pc_epc += WS;
     LDST(statep);
@@ -220,3 +295,121 @@ void getProcessID(state_t *statep) {
     RELEASE_LOCK(&globalLock);
 }
 
+
+int last_pid = 0;  
+
+int generate_new_pid() {
+    return ++last_pid;  // Incrementa e restituisci PID univoco
+}
+// Servono a generare un PID univoco per ogni processo
+
+
+int createProcess(state_t *state, support_t *support) {
+    pcb_t *new_pcb = allocPcb();
+    if (!new_pcb) {
+        return -1;  // Errore: PCB non allocato
+    }
+
+    // Inizializzazione PCB
+    new_pcb->p_s = *state;
+    new_pcb->p_supportStruct = support;
+    new_pcb->p_pid = generate_new_pid();  // Funzione per PID univoci
+    new_pcb->p_time = 0;
+    new_pcb->p_semAdd = NULL;
+
+    // Gestione gerarchia e scheduling
+    insertChild(getCurrentProc(), new_pcb);
+    insertProcQ(&readyQueue, new_pcb);
+    processCount++;
+
+    return new_pcb->p_pid;  // Successo: restituisci PID
+}
+
+void exceptionHandler() {
+    int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
+
+    state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);    // Prendiamo lo stato del processo che ha generato l'eccezione
+
+    unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
+
+    if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
+        klog_print("qua dentro entra in un bel loooooooop");
+
+        handleInterrupt();
+        return;
+    }
+
+    unsigned int exc_code = cause & CAUSE_EXCCODE_MASK; //CAUSE_EXCCODE_MASK è una maschera per prendere i bit 0-5 della causa dell'eccezione
+
+    switch(exc_code) {
+        case 8:  // SYSCALL
+        case 11: // SYSCALL
+            // handleSyscall(exc_state);  // il gestore di syscall
+            int syscall_num = exc_state->reg_a0;
+            switch (syscall_num) {
+            case CREATEPROCESS: {  // -1 
+                // Recupera argomenti dai registri
+                state_t *state = (state_t *)exc_state->reg_a1;
+                support_t *support = (support_t *)exc_state->reg_a3;
+            
+                // Richiama la funzione dedicata
+                int pid = createProcess(state, support);
+            
+                // Imposta il valore di ritorno nel registro a0
+                exc_state->reg_a0 = pid;
+                break;
+            }
+            case TERMPROCESS:    // -2
+                terminateProcess(exc_state);
+                return;  // Non ritornare al processo
+
+            case PASSEREN:       // -3
+                passeren(exc_state);
+                return;
+
+            case VERHOGEN:       // -4
+                verhogen(exc_state);
+                return;
+
+            case DOIO:           // -5
+                // Implementa operazione I/O... credo in te Hermes
+                return;
+
+            case GETTIME:        // -6
+                getCPUTime(exc_state);
+                break;
+
+            case CLOCKWAIT:      // -7
+                waitForClock(exc_state);
+                return;
+
+            case GETSUPPORTPTR:  // -8
+                getSupportData(exc_state);
+                break;
+
+            case GETPROCESSID:   // -9
+                getProcessID(exc_state);
+                break;
+
+            default:
+                klog_print("ciao qua esco panico");
+                PANIC();  // Syscall non riconosciuta
+                return;
+        }
+            break;
+
+        case 24:
+        case 25:
+        case 26:
+        case 27:
+        case 28:
+            klog_print("ciao qua esco panico");
+            PANIC();  // per ora scrivo solo panic perché serve una parte dopo
+            break;
+
+        default: // tutto gli altri casi (Program Trap)
+            klog_print("ciao qua esco panico");
+            PANIC();  // altro panic
+            break;
+    }
+}

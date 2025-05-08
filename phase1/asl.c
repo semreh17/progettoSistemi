@@ -96,7 +96,17 @@ pcb_t* removeBlocked(int* semAdd) {
     return removedPcb;
 }
 
+// in realtà cerca il processo bloccato nel semaforo e lo restituisce
 pcb_t* outBlockedPid(int pid) {
+    semd_t* semaphoreIter = NULL;
+    pcb_t* blockedProcIter = NULL;
+    list_for_each_entry(semaphoreIter, &semd_h, s_link) {
+        list_for_each_entry(blockedProcIter, &semaphoreIter->s_procq, p_list) {
+            if (blockedProcIter->p_pid == pid) {
+                return blockedProcIter;
+            }
+        }
+    }
     return NULL;
 }
 
