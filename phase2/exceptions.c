@@ -6,6 +6,10 @@ extern struct list_head readyQueue;  // La fila dei processi pronti
 extern struct list_head semd_h;
 extern int deviceSemaphores[NRSEMAPHORES];
 
+#define INCURRENTPROCESS 0
+#define ONREADYQUEUE 1
+#define BLOCKEDONASEM 2
+
 extern void klog_print();
 
 void *memcpy(void *dest, const void *src, unsigned int n)
@@ -29,9 +33,9 @@ void handleInterrupt() {
         if (currentProcess[core_id]) {
             // Salva stato corrente nel PCB
             currentProcess[core_id]->p_s = *exc_state;
+            // TODO: CAMBIARE IL MEMCPY CON L'UGUALE
             memcpy(&currentProcess[core_id]->p_s, exc_state, sizeof(state_t));
 
-            
             // Aggiorna tempo CPU usando campo p_time esistente
             cpu_t now;
             STCK(now);
@@ -90,12 +94,6 @@ void handleInterrupt() {
     PANIC();
 }
 
-/*
- * location value:
- * 0 = Current Process
- * 1 = Ready Queue
- * 2 = blocked on a semaphore
- */
 void recursiveKiller(pcb_t *p, unsigned int location) {
     if (p == NULL) {
         return;
@@ -112,13 +110,13 @@ void recursiveKiller(pcb_t *p, unsigned int location) {
     switch (location) {
         case 0:
             outProcQ(&currentProcess[processorID]->p_list, p);
-            break;
+        break;
         case 1:
             outProcQ(&readyQueue, p);
-            break;
+        break;
         case 2:
             outBlocked(p);
-            break;
+        break;
         default:
             break;
     }
@@ -128,21 +126,20 @@ void terminateProcess(state_t *statep) {
     pcb_t* toTerminate = NULL;
     int pid = statep->gpr[25];
     int processorID = getPRID();
-
-    if (!globalLock) {
-        ACQUIRE_LOCK(&globalLock);
-    }
+    ACQUIRE_LOCK(&globalLock);
 
     if (pid == 0) {
         toTerminate = currentProcess[processorID];
-        recursiveKiller(toTerminate, 0);
+        recursiveKiller(toTerminate, INCURRENTPROCESS);
+        scheduler();
     } else {
         // ricerca del pcb nella currentProcess, nella readyQueue o che aspetta bloccato su un semaforo
+        // tutta questa parte sarebbe meglio metterla dentro una apposita funzione
         // CURRENTPROCESS
         for (int i = 0; i < NCPU; i++) {
             if (currentProcess[i]->p_pid == pid) {
                 toTerminate = currentProcess[i];
-                recursiveKiller(toTerminate, 0);
+                recursiveKiller(toTerminate, INCURRENTPROCESS);
                 break;
             }
         }
@@ -156,37 +153,28 @@ void terminateProcess(state_t *statep) {
                     break;
                 }
             }
-            recursiveKiller(toTerminate, 1);
+            recursiveKiller(toTerminate, ONREADYQUEUE);
         }
 
         // BLOCKED ON A SEMAPHORE
         if (toTerminate == NULL) {
             toTerminate = outBlockedPid(pid);
-            recursiveKiller(toTerminate, 2);
+            recursiveKiller(toTerminate, BLOCKEDONASEM);
             // PCB TROVATOOOOOOOO
         }
+        scheduler();
     }
     statep->pc_epc += WS;
     LDST(statep);
     RELEASE_LOCK(&globalLock);
 }
 
+
 void systemcallBlock(state_t *statep, int ppid) {
     statep->pc_epc += WS;
-    // pacco non credo sia giusto aiuto, qualcuno mi aiuti vi prego non ce la faccio più
-
-    // DIO CANE, PORCO, NON POSSO COPIARLO CON UNA LINEA DI CODICE E MI TOCCA FARE TUTTA QUESTA ROBA A MANO MANNAGGIA A DIO
+    // TODO: CAMBIARE IL MEMCPY CON L'UGUALE
     memcpy(&currentProcess[ppid]->p_s, statep, sizeof(state_t));
-
-    // currentProcess[ppid]->p_s.cause = statep->cause;
-    // currentProcess[ppid]->p_s.entry_hi = statep->entry_hi;
-    // currentProcess[ppid]->p_s.mie = statep->mie;
-    // currentProcess[ppid]->p_s.pc_epc = statep->pc_epc;
-    // currentProcess[ppid]->p_s.status = statep->status;
-    // for (int i = 0; i < STATE_GPR_LEN; i++) {
-    //     currentProcess[ppid]->p_s.gpr[i] = statep->gpr[i];
-    // }
-
+    
     // time updated for current process
     cpu_t currentTime;
     STCK(currentTime);
@@ -248,7 +236,18 @@ void verhogen(state_t *statep) {
 // not so sure di queste, da rivedere
 
 void doIO(state_t *statep) {
+    // devo cercare il device giusto, ma come mmmmmmmm
+    // in teoria mi basta scorrere onguna delle tot linee e per ogni linea
+    // confrontare il command field con quello che mi viene passato come argomento
 
+    unsigned int *commandAdr = (unsigned int*)statep->gpr[25];
+    int commandVal = statep->gpr[26];
+
+    for (int i = 0; i < 6; i++) { // cicla per ogni chezzo di linea
+        for (int j = 0; j < 9; j++) { // cicla per ogni device nella linea
+
+        }
+    }
 }
 
 // currentTime dovrebbe contenere la quantità di tempo in microsecondi a partire dal boot del sistema
@@ -295,7 +294,6 @@ void getProcessID(state_t *statep) {
     RELEASE_LOCK(&globalLock);
 }
 
-
 int last_pid = 0;  
 
 int generate_new_pid() {
@@ -318,7 +316,7 @@ int createProcess(state_t *state, support_t *support) {
     new_pcb->p_semAdd = NULL;
 
     // Gestione gerarchia e scheduling
-    insertChild(getCurrentProc(), new_pcb);
+    // insertChild(getCurrentProc(), new_pcb);
     insertProcQ(&readyQueue, new_pcb);
     processCount++;
 
@@ -333,8 +331,6 @@ void exceptionHandler() {
     unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
 
     if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
-        klog_print("qua dentro entra in un bel loooooooop");
-
         handleInterrupt();
         return;
     }
@@ -412,4 +408,22 @@ void exceptionHandler() {
             PANIC();  // altro panic
             break;
     }
+}
+
+
+void passUpOrDie(state_t *statep, int exceptIndex) {
+    ACQUIRE_LOCK(&globalLock);
+    int ppid = getPRID();
+    if (currentProcess[ppid]->p_supportStruct == NULL) {
+        recursiveKiller(currentProcess[ppid], INCURRENTPROCESS);
+    } else {
+        // c'è da salvare lo stato nel processo corrente!
+        // TODO: CAMBIARE IL MEMCPY CON L'UGUALE
+        memcpy(&currentProcess[ppid]->p_supportStruct->sup_exceptState[exceptIndex], statep, sizeof(state_t));
+        LDCXT(currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].stackPtr,
+              currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].status,
+              currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].pc);
+    }
+    RELEASE_LOCK(&globalLock);
+    scheduler();
 }
