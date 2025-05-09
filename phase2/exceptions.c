@@ -20,6 +20,52 @@ void *memcpy(void *dest, const void *src, unsigned int n)
     }
 }
 
+void recursiveKiller(pcb_t *p, unsigned int location) {
+    if (p == NULL) {
+        return;
+    }
+    // rendo orfani i processi figli
+    while (!emptyChild(p)) {
+        pcb_t *child = container_of(&p->p_child, pcb_t, p_list);
+        outChild(child);
+        recursiveKiller(child, location);
+    }
+    // c'è da uccidere il processo a tutti gli effetti
+    // teoricamente mi basta togliere ogni tipo di riferimento al processo, di conseguenza nulla lo punterà più
+    unsigned int processorID = getPRID();
+    switch (location) {
+        case 0:
+            outProcQ(&currentProcess[processorID]->p_list, p);
+        break;
+        case 1:
+            outProcQ(&readyQueue, p);
+        break;
+        case 2:
+            outBlocked(p);
+        break;
+        default:
+            break;
+    }
+}
+
+
+void passUpOrDie(state_t *statep, int exceptIndex) {
+    ACQUIRE_LOCK(&globalLock);
+    int ppid = getPRID();
+    if (currentProcess[ppid]->p_supportStruct == NULL) {
+        recursiveKiller(currentProcess[ppid], INCURRENTPROCESS);
+    } else {
+        // c'è da salvare lo stato nel processo corrente!
+        // TODO: CAMBIARE IL MEMCPY CON L'UGUALE
+        memcpy(&currentProcess[ppid]->p_supportStruct->sup_exceptState[exceptIndex], statep, sizeof(state_t));
+        LDCXT(currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].stackPtr,
+              currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].status,
+              currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].pc);
+    }
+    RELEASE_LOCK(&globalLock);
+    scheduler();
+}
+
 void handleInterrupt() {
     int core_id = getPRID();
     state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);
@@ -94,34 +140,6 @@ void handleInterrupt() {
     PANIC();
 }
 
-void recursiveKiller(pcb_t *p, unsigned int location) {
-    if (p == NULL) {
-        return;
-    }
-    // rendo orfani i processi figli
-    while (!emptyChild(p)) {
-        pcb_t *child = container_of(&p->p_child, pcb_t, p_list);
-        outChild(child);
-        recursiveKiller(child, location);
-    }
-    // c'è da uccidere il processo a tutti gli effetti
-    // teoricamente mi basta togliere ogni tipo di riferimento al processo, di conseguenza nulla lo punterà più
-    unsigned int processorID = getPRID();
-    switch (location) {
-        case 0:
-            outProcQ(&currentProcess[processorID]->p_list, p);
-        break;
-        case 1:
-            outProcQ(&readyQueue, p);
-        break;
-        case 2:
-            outBlocked(p);
-        break;
-        default:
-            break;
-    }
-}
-
 void terminateProcess(state_t *statep) {
     pcb_t* toTerminate = NULL;
     int pid = statep->gpr[25];
@@ -174,7 +192,7 @@ void systemcallBlock(state_t *statep, int ppid) {
     statep->pc_epc += WS;
     // TODO: CAMBIARE IL MEMCPY CON L'UGUALE
     memcpy(&currentProcess[ppid]->p_s, statep, sizeof(state_t));
-    
+
     // time updated for current process
     cpu_t currentTime;
     STCK(currentTime);
@@ -338,10 +356,20 @@ void exceptionHandler() {
     unsigned int exc_code = cause & CAUSE_EXCCODE_MASK; //CAUSE_EXCCODE_MASK è una maschera per prendere i bit 0-5 della causa dell'eccezione
 
     switch(exc_code) {
+        case 0 ... 7:
+            passUpOrDie(exc_state, GENERALEXCEPT);
+            break;
+        case 9 ... 10:
+            passUpOrDie(exc_state, GENERALEXCEPT);
+            break;
         case 8:  // SYSCALL
         case 11: // SYSCALL
             // handleSyscall(exc_state);  // il gestore di syscall
+            // controllo delle systemCall con numeri maggiori di 0
             int syscall_num = exc_state->reg_a0;
+            if (syscall_num > 0) {
+                passUpOrDie(exc_state, GENERALEXCEPT);
+            }
             switch (syscall_num) {
             case CREATEPROCESS: {  // -1 
                 // Recupera argomenti dai registri
@@ -393,37 +421,15 @@ void exceptionHandler() {
                 return;
         }
             break;
-
-        case 24:
-        case 25:
-        case 26:
-        case 27:
-        case 28:
-            klog_print("ciao qua esco panico");
-            PANIC();  // per ora scrivo solo panic perché serve una parte dopo
+        case 12 ... 23:
+            passUpOrDie(exc_state, GENERALEXCEPT);
+            break;
+        case 24 ... 28:
+            passUpOrDie(exc_state, PGFAULTEXCEPT);
             break;
 
         default: // tutto gli altri casi (Program Trap)
-            klog_print("ciao qua esco panico");
-            PANIC();  // altro panic
+            passUpOrDie(exc_state, GENERALEXCEPT);
             break;
     }
-}
-
-
-void passUpOrDie(state_t *statep, int exceptIndex) {
-    ACQUIRE_LOCK(&globalLock);
-    int ppid = getPRID();
-    if (currentProcess[ppid]->p_supportStruct == NULL) {
-        recursiveKiller(currentProcess[ppid], INCURRENTPROCESS);
-    } else {
-        // c'è da salvare lo stato nel processo corrente!
-        // TODO: CAMBIARE IL MEMCPY CON L'UGUALE
-        memcpy(&currentProcess[ppid]->p_supportStruct->sup_exceptState[exceptIndex], statep, sizeof(state_t));
-        LDCXT(currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].stackPtr,
-              currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].status,
-              currentProcess[ppid]->p_supportStruct->sup_exceptContext[exceptIndex].pc);
-    }
-    RELEASE_LOCK(&globalLock);
-    scheduler();
 }
