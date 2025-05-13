@@ -261,6 +261,7 @@ void doIO(state_t *statep) {
     unsigned int *commandAdr = (unsigned int*)statep->gpr[25];
     int commandVal = statep->gpr[26];
 
+    // ok devi cercare due volte diverse, una per i terminal device e l'altra per i restanti device register
     for (int i = 0; i < 6; i++) { // cicla per ogni chezzo di linea
         for (int j = 0; j < 9; j++) { // cicla per ogni device nella linea
 
@@ -312,40 +313,33 @@ void getProcessID(state_t *statep) {
     RELEASE_LOCK(&globalLock);
 }
 
-int last_pid = 0;  
-
-int generate_new_pid() {
-    return ++last_pid;  // Incrementa e restituisci PID univoco
-}
-// Servono a generare un PID univoco per ogni processo
-
-
-int createProcess(state_t *state, support_t *support) {
+void createProcess(state_t *statep) {
+    ACQUIRE_LOCK(&globalLock);
     pcb_t *new_pcb = allocPcb();
     if (!new_pcb) {
-        return -1;  // Errore: PCB non allocato
+        statep->reg_a1 = -1;  // Errore: PCB non allocato
+        return;
     }
 
     // Inizializzazione PCB
-    new_pcb->p_s = *state;
-    new_pcb->p_supportStruct = support;
-    new_pcb->p_pid = generate_new_pid();  // Funzione per PID univoci
+    // al campo p_s restituisco il contenuto della cella contenente lo state presente nel registro a1
+    new_pcb->p_s = *(state_t*)statep->reg_a1;
+    new_pcb->p_supportStruct = (support_t*)statep->reg_a3;
     new_pcb->p_time = 0;
     new_pcb->p_semAdd = NULL;
 
     // Gestione gerarchia e scheduling
-    // insertChild(getCurrentProc(), new_pcb);
     insertProcQ(&readyQueue, new_pcb);
+    insertChild(currentProcess[getPRID()], new_pcb);
     processCount++;
 
-    return new_pcb->p_pid;  // Successo: restituisci PID
+    statep->reg_a1 = new_pcb->p_pid;  // Successo: restituisci PID
+    RELEASE_LOCK(&globalLock);
 }
 
 void exceptionHandler() {
     int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
-
     state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);    // Prendiamo lo stato del processo che ha generato l'eccezione
-
     unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
 
     if (CAUSE_IS_INT(cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
@@ -369,35 +363,28 @@ void exceptionHandler() {
             int syscall_num = exc_state->reg_a0;
             if (syscall_num > 0) {
                 passUpOrDie(exc_state, GENERALEXCEPT);
+                break;
             }
             switch (syscall_num) {
-            case CREATEPROCESS: {  // -1 
-                // Recupera argomenti dai registri
-                state_t *state = (state_t *)exc_state->reg_a1;
-                support_t *support = (support_t *)exc_state->reg_a3;
-            
-                // Richiama la funzione dedicata
-                int pid = createProcess(state, support);
-            
-                // Imposta il valore di ritorno nel registro a0
-                exc_state->reg_a0 = pid;
+            case CREATEPROCESS: {  // -1
+                createProcess(exc_state);
                 break;
             }
             case TERMPROCESS:    // -2
                 terminateProcess(exc_state);
-                return;  // Non ritornare al processo
+                break;
 
             case PASSEREN:       // -3
                 passeren(exc_state);
-                return;
+                break;
 
             case VERHOGEN:       // -4
                 verhogen(exc_state);
-                return;
+                break;
 
             case DOIO:           // -5
                 // Implementa operazione I/O... credo in te Hermes
-                return;
+                break;
 
             case GETTIME:        // -6
                 getCPUTime(exc_state);
@@ -405,7 +392,7 @@ void exceptionHandler() {
 
             case CLOCKWAIT:      // -7
                 waitForClock(exc_state);
-                return;
+                break;
 
             case GETSUPPORTPTR:  // -8
                 getSupportData(exc_state);
