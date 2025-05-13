@@ -7,7 +7,6 @@ extern struct pcb_t *currentProcess[NCPU];
 extern struct list_head readyQueue;
 extern void scheduler();
 extern int deviceSemaphores[NRSEMAPHORES];
-extern void memcpy();
 
 void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 
@@ -38,7 +37,7 @@ void dev_interrupt_handler(int IntLineNo, state_t *statep) {
     unsigned int status = term_reg->recv_status;
     term_reg->recv_command = ACK;
 
-    verhogen(*statep); //perform a V operation on the Nucleus maintained semaphore associated with this (sub)device.(???)
+    // verhogen(*statep); //perform a V operation on the Nucleus maintained semaphore associated with this (sub)device.(???)
 
 
     //5
@@ -60,25 +59,25 @@ void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 static void LocalTimerInterrupt(state_t *statep) {  //per IL_CPUTIMER
 
     ACQUIRE_LOCK(&globalLock);
-    
+
     setTIMER(TIMESLICE);  //acknowledge PLT interrupt e reimposta timer
-    
+
     pcb_t *current_pcb = currentProcess[getPRID()];
 
     if(current_pcb != NULL) {
-        
-        memcpy(&current_pcb->p_s, statep, sizeof(state_t)); //Copy the processor state of the current CPU at the time of the exception into the Current
-                                                            //Process’s PCB (p_s) of the current CPU.
-        
-        insertProcQ(&readyQueue, current_pcb);  //Place the Current Process on the Ready Queue; transitioning the Current Process from the
-                                                //“running” state to the “ready” state.
-        
+        //Copy the processor state of the current CPU at the time of the exception into the Current
+        //Process’s PCB (p_s) of the current CPU.
+        current_pcb->p_s = *statep;
+        //Place the Current Process on the Ready Queue; transitioning the Current Process from the
+        //“running” state to the “ready” state.
+        insertProcQ(&readyQueue, current_pcb);
+
         currentProcess[getPRID()] = NULL;
 
     }
-    
+
     RELEASE_LOCK(&globalLock);
-    
+
     scheduler();    //Call the Scheduler.
 
 }
