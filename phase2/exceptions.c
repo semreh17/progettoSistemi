@@ -318,6 +318,7 @@ void createProcess(state_t *statep) {
     pcb_t *new_pcb = allocPcb();
     if (!new_pcb) {
         statep->reg_a1 = -1;  // Errore: PCB non allocato
+        RELEASE_LOCK(&globalLock);
         return;
     }
 
