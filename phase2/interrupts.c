@@ -10,6 +10,8 @@ extern int deviceSemaphores[NRSEMAPHORES];
 
 void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 
+    pcb_t *toUnblock;
+
     devregarea_t *dev_area = (devregarea_t *)RAMBASEADDR; //accesso all'area dei registri dispositivo
 
     unsigned int dev_bitmap = dev_area->interrupt_dev[IntLineNo - 3];
@@ -39,12 +41,12 @@ void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 
     // verhogen(*statep); //perform a V operation on the Nucleus maintained semaphore associated with this (sub)device.(???)
 
-
-    //5
-
-
-    //6
-
+    if (toUnblock != NULL) {
+        
+        toUnblock->p_s.reg_a0 = statep; //qua va bene o dovrei usare memcpy?
+        
+        insertProcQ(&readyQueue, toUnblock);
+    }
 
 
     if (currentProcess[getPRID()]) {
@@ -52,6 +54,7 @@ void dev_interrupt_handler(int IntLineNo, state_t *statep) {
     } else {
         scheduler();
     }
+
 }
 
 
