@@ -6,6 +6,7 @@ extern pcb_t *currentProcess[NCPU];
 void scheduler() {
     unsigned int coreId = getPRID();
     ACQUIRE_LOCK(&globalLock);
+    klog_print(" xxxxxxxxxxxxxxx ");
     if (!emptyProcQ(&readyQueue)) {
         pcb_t *newProcess = removeProcQ(&readyQueue);  //rimuove processo dalla queue
         currentProcess[coreId] = newProcess;      //assegnazione al core corrente
@@ -18,7 +19,7 @@ void scheduler() {
         if (processCount == 0) {     //se la coda è vuota
             RELEASE_LOCK(&globalLock);
             HALT();
-        } else if (processCount > 0 && coreId != 0) { // non ho capito perché controlli anche il coreId
+        } else {
             *((memaddr *)TPR) = 1; // setting the TPR to 1
             setMIE(MIE_ALL & ~MIE_MTIE_MASK);
             unsigned int status = getSTATUS();

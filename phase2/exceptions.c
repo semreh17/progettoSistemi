@@ -111,7 +111,10 @@ void handleInterrupt() {
         }
         
         RELEASE_LOCK(&globalLock);
-        LDST(exc_state);
+        klog_print("qua si blocca, IL_TIMER? ");
+        klog_print_dec(core_id);
+        klog_print("\n");
+        LDST(&currentProcess[core_id]->p_s);
         return;
     }
     
@@ -131,12 +134,11 @@ void handleInterrupt() {
         }
         
         RELEASE_LOCK(&globalLock);
-        LDST(exc_state);
+        LDST(&currentProcess[core_id]->p_s);
         return;
     }
     
     RELEASE_LOCK(&globalLock);
-    klog_print("ciao qua esco panico");
     PANIC();
 }
 
@@ -180,6 +182,7 @@ void terminateProcess(state_t *statep) {
             recursiveKiller(toTerminate, BLOCKEDONASEM);
             // PCB TROVATOOOOOOOO
         }
+        RELEASE_LOCK(&globalLock);
         scheduler();
     }
     statep->pc_epc += WS;
@@ -210,17 +213,17 @@ void passeren(state_t *statep) {
      * in caso contrario devi fermare il processo su quel semaforo in qualche modo
      */
     // il puntatore in sè equivale alla chiave del semaforo, il contenuto della cella è il valore effettivo del semaforo
-    int semadd = statep->gpr[25];
-    if (semadd == 0) {
+    int *semadd = (int*)&statep->reg_a1;
+    if (*semadd == 0) {
         ACQUIRE_LOCK(&globalLock);
-        insertBlocked(&semadd, currentProcess[getPRID()]);
+        insertBlocked(semadd, currentProcess[getPRID()]);
         // il release_lock va messo prima
         RELEASE_LOCK(&globalLock);
         systemcallBlock(statep, getPRID());
     } else {
         ACQUIRE_LOCK(&globalLock);
-        semadd--;
-        pcb_t *unblocked = removeBlocked(&semadd);
+        *semadd--;
+        pcb_t *unblocked = removeBlocked(semadd);
         if (unblocked != NULL) {
             insertProcQ(&readyQueue, unblocked);
         }
@@ -231,22 +234,22 @@ void passeren(state_t *statep) {
 }
 
 void verhogen(state_t *statep) {
-    int semadd = statep->gpr[25];
+    int *semadd = (int*)&statep->reg_a1;
 
     if (semadd == 0) {
         ACQUIRE_LOCK(&globalLock);
-        semadd++;
-        pcb_t *unblocked = removeBlocked(&semadd);
+        *semadd++;
+        pcb_t *unblocked = removeBlocked(semadd);
         if (unblocked != NULL) {
             insertProcQ(&readyQueue, unblocked);
-            semadd--;
+            *semadd--;
         }
         statep->pc_epc += WS;
         LDST(statep);
         RELEASE_LOCK(&globalLock);
     } else { // il processo si deve bloccare!
         ACQUIRE_LOCK(&globalLock);
-        insertBlocked(&semadd, currentProcess[getPRID()]);
+        insertBlocked(semadd, currentProcess[getPRID()]);
         RELEASE_LOCK(&globalLock);
         systemcallBlock(statep, getPRID());
     }
@@ -258,15 +261,23 @@ void doIO(state_t *statep) {
     // in teoria mi basta scorrere onguna delle tot linee e per ogni linea
     // confrontare il command field con quello che mi viene passato come argomento
 
-    unsigned int *commandAdr = (unsigned int*)statep->gpr[25];
-    int commandVal = statep->gpr[26];
+    klog_print(" xxxxxxxxx ");
+    unsigned int *commandAdr = (unsigned int*)statep->reg_a1;
+    int commandVal = statep->reg_a2;
 
-    // ok devi cercare due volte diverse, una per i terminal device e l'altra per i restanti device register
-    for (int i = 0; i < 6; i++) { // cicla per ogni chezzo di linea
-        for (int j = 0; j < 9; j++) { // cicla per ogni device nella linea
+    // "indice" del device
+    int getDev = (int) commandAdr - DEV_REG_START;
 
-        }
-    }
+    // numero del device
+    int devNo = getDev % 0x8;
+    // blocco il semaforo con il getprid
+    ACQUIRE_LOCK(&globalLock);
+    // se è dispari lo blocchi sul device semaphore 0 altrimenti sul numero 1
+    
+    insertBlocked(&deviceSemaphores[devNo], currentProcess[getPRID()]);
+    RELEASE_LOCK(&globalLock);
+    *commandAdr = commandVal;
+    scheduler();
 }
 
 // currentTime dovrebbe contenere la quantità di tempo in microsecondi a partire dal boot del sistema
