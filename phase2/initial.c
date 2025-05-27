@@ -22,10 +22,9 @@ extern void uTLB_RefillHandler();
 extern void exceptionHandler();
 
 void passupvectorInit() {
-    passupvector_t *passup;
+    passupvector_t *passup = PASSUPVECTOR;
 
     // init for the pass up vector of the first CPU
-    passup = PASSUPVECTOR;
     passup->tlb_refill_handler = (memaddr)uTLB_RefillHandler;
     passup->tlb_refill_stackPtr = KERNELSTACK;
     passup->exception_handler = (memaddr)exceptionHandler;
@@ -34,7 +33,8 @@ void passupvectorInit() {
     // init of the processors from 1 to 7, i
     //i represents the cpu_id mentioned in the specs
     for (int i = 1; i <= NCPU; i++) {
-        passup += 0x10;
+        passup = PASSUPVECTOR + (i*0x10);
+        // passup++;
         passup->tlb_refill_handler = (memaddr)uTLB_RefillHandler;
         passup->tlb_refill_stackPtr = RAMSTART + (64 * PAGESIZE) +(i * PAGESIZE);
         passup->exception_handler = (memaddr)exceptionHandler;
@@ -107,7 +107,7 @@ int main() {
         currentProcess[i]->p_s.entry_hi = 0;
         INITCPU(i, &currentProcess[i]->p_s.status);
     }
-    klog_print("SCHEDULER\n");
+    klog_print("SCHEDULER TUTTO OK\n");
     scheduler();
 
 }

@@ -87,10 +87,11 @@ static void LocalTimerInterrupt(state_t *statep) {  //per IL_CPUTIMER
 
 
 
-static void SistemWideIntervalTimer(state_t *ExeptionOccurred) {
+static void SystemWideIntervalTimer(state_t *ExeptionOccurred) {
     //1. Acknowledge the interrupt by loading the Interval Timer with a new value: 100 milliseconds
     //(constant PSECOND). Load the Interval Timer value can be done with the following pre-defined
     //macro LDIT(T).
+    ACQUIRE_LOCK(&globalLock);
     LDIT(PSECOND);
 
 
@@ -110,7 +111,7 @@ static void SistemWideIntervalTimer(state_t *ExeptionOccurred) {
         LDST(ExeptionOccurred);
 
     } else {
-
+        RELEASE_LOCK(&globalLock);
         scheduler();
     }
 }
@@ -137,7 +138,7 @@ void interruptHandler(int cause, state_t *statep) {
         LocalTimerInterrupt(statep);
 
     else if (CAUSE_IP_GET(cause, IL_TIMER))
-        SistemWideIntervalTimer(statep);
+        SystemWideIntervalTimer(statep);
 
     //else ERROR(?)
 }

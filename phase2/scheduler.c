@@ -6,7 +6,6 @@ extern pcb_t *currentProcess[NCPU];
 void scheduler() {
     unsigned int coreId = getPRID();
     ACQUIRE_LOCK(&globalLock);
-    klog_print(" xxxxxxxxxxxxxxx ");
     if (!emptyProcQ(&readyQueue)) {
         pcb_t *newProcess = removeProcQ(&readyQueue);  //rimuove processo dalla queue
         currentProcess[coreId] = newProcess;      //assegnazione al core corrente
