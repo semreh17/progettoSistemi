@@ -5,7 +5,7 @@ extern pcb_t *currentProcess[NCPU];  // Chi sta girando su ogni core
 extern struct list_head readyQueue;  // La fila dei processi pronti
 extern struct list_head semd_h;
 extern int deviceSemaphores[NRSEMAPHORES];
-
+extern volatile unsigned int globalLock;  // Lock globale per la sincronizzazione
 #define INCURRENTPROCESS 0
 #define ONREADYQUEUE 1
 #define BLOCKEDONASEM 2
@@ -117,7 +117,7 @@ void handleInterrupt() {
         
         // Sblocca processi in attesa usando SEMDEVLEN-1 come ID
         pcb_t *unblocked;
-        while ((unblocked = removeBlocked((memaddr)(SEMDEVLEN-1))) != NULL) {
+        while ((unblocked = removeBlocked(&deviceSemaphores[SEMDEVLEN-1])) != NULL) {
             insertProcQ(&readyQueue, unblocked);
         }
         
@@ -134,7 +134,7 @@ void handleInterrupt() {
         *dev_addr = RECEIVEMSG;
         
         // Sblocca processo in attesa
-        pcb_t *unblocked = removeBlocked((memaddr)dev_addr);
+        pcb_t *unblocked = removeBlocked(dev_addr);
         if (unblocked) {
             unblocked->p_s.gpr[4] = *dev_addr; // a0 = status
             insertProcQ(&readyQueue, unblocked);
@@ -158,6 +158,7 @@ void terminateProcess(state_t *statep) {
     if (pid == 0) {
         toTerminate = currentProcess[processorID];
         recursiveKiller(toTerminate, INCURRENTPROCESS);
+        RELEASE_LOCK(&globalLock);
         scheduler();
     } else {
         // ricerca del pcb nella currentProcess, nella readyQueue o che aspetta bloccato su un semaforo

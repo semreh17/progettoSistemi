@@ -13,33 +13,38 @@
 int processCount; // started but not terminated process
 struct list_head readyQueue; // queue of PCB's in the ready state
 struct pcb_t *currentProcess[NCPU]; // vector of pointers to the PCB that is in the "running" state on each CPU
-volatile unsigned int globalLock;
 int deviceSemaphores[NRSEMAPHORES];
-
+volatile unsigned int globalLock;
 extern void test();
 extern void scheduler();
 extern void uTLB_RefillHandler();
 extern void exceptionHandler();
 
 void passupvectorInit() {
-    passupvector_t *passup = PASSUPVECTOR;
-
-    // init for the pass up vector of the first CPU
-    passup->tlb_refill_handler = (memaddr)uTLB_RefillHandler;
-    passup->tlb_refill_stackPtr = KERNELSTACK;
-    passup->exception_handler = (memaddr)exceptionHandler;
-    passup->exception_stackPtr = KERNELSTACK;
-
-    // init of the processors from 1 to 7, i
-    //i represents the cpu_id mentioned in the specs
-    for (int i = 1; i <= NCPU; i++) {
-        passup = PASSUPVECTOR + (i*0x10);
-        // passup++;
-        passup->tlb_refill_handler = (memaddr)uTLB_RefillHandler;
-        passup->tlb_refill_stackPtr = RAMSTART + (64 * PAGESIZE) +(i * PAGESIZE);
-        passup->exception_handler = (memaddr)exceptionHandler;
-        passup->exception_stackPtr = RAMSTART + (64 * PAGESIZE) +(i * PAGESIZE);
+    passupvector_t *passupvector = (passupvector_t *) PASSUPVECTOR;
+  for (int i = 0; i < NCPU; i++) {
+    passupvector->tlb_refill_handler = (memaddr)uTLB_RefillHandler;
+    if (i == 0) {
+      passupvector->tlb_refill_stackPtr = KERNELSTACK;
+      passupvector->exception_stackPtr = KERNELSTACK;
+    } else {
+      passupvector->tlb_refill_stackPtr = RAMSTART + (64 * PAGESIZE) + (i * PAGESIZE);
+      passupvector->exception_stackPtr = 0x20020000 + (i * PAGESIZE);
     }
+    passupvector->exception_handler = (memaddr)exceptionHandler;
+    passupvector++; // qui avevamo sbagliato, dovevamo semplicemente incrementare il puntatore
+  }
+}
+void configureIRT(int line, int cpu) {
+  for (int line = 0; line < N_INTERRUPT_LINES; line++) {  // dobbiamo farlo per ogni linea di interruzione
+    for (int dev = 0; dev < N_DEV_PER_IL; dev++) {        // per ogni device
+      memaddr *irt_entry = (memaddr *)IRT_ENTRY(line, dev);
+      *irt_entry = IRT_RP_BIT_ON;                                                
+      for (int cpu_id = 0; cpu_id < NCPU; cpu_id++){
+        *irt_entry |= (1U << cpu_id); // setta il bit di destinazione, 1 << cpu ...001 | ...010 | ...100; in fase finale era sbagliata prima
+      }  
+    }
+  }
 }
 
 int main() {
@@ -83,15 +88,10 @@ int main() {
 
     // 7.
     // vengono assegnati 6 registri ad ogni CPU
-    int cpu_counter = -1;
-    for (int i = 0; i < IRT_NUM_ENTRY; i++) {
-        if (i % (IRT_NUM_ENTRY/NCPU) == 0) { // quando finisce di riempire tutti e 6 i registri di ogni CPU allora incrementa il cpu_counter
-            cpu_counter++;
-        }
-        *((memaddr *)(IRT_START + i*WS)) |= IRT_RP_BIT_ON; // il 28esimo bit della interrupt line viene settato ad 1
-        *((memaddr *)(IRT_START + i*WS)) |= (1 << cpu_counter); // il CPU-esimo bit dell'interrupt line viene settato ad 1
-    }
-    *((memaddr *)TPR) = 0; // setting the task priority
+      for (int i = 0; i < IRT_NUM_ENTRY; i++) {
+            int cpucounter = (i / (IRT_NUM_ENTRY / NCPU)) % NCPU;
+            configureIRT(i, cpucounter);
+      }
     klog_print("registri gas\n");
 
     // 8.

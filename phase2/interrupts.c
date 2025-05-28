@@ -10,8 +10,6 @@ extern int deviceSemaphores[NRSEMAPHORES];
 
 void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 
-    pcb_t *toUnblock;
-
     devregarea_t *dev_area = (devregarea_t *)RAMBASEADDR; //accesso all'area dei registri dispositivo
 
     unsigned int dev_bitmap = dev_area->interrupt_dev[IntLineNo - 3];
@@ -34,16 +32,23 @@ void dev_interrupt_handler(int IntLineNo, state_t *statep) {
     else DevNo = 0;
 
     memaddr devAddrBase = START_DEVREG + ((IntLineNo - 3) * 0x80) + (DevNo * 0x10); //scritta così nelle spec
-
-    termreg_t *term_reg = (termreg_t *)devAddrBase; //salvare status e mandare ACK, leggendo da types.h mi sembra corretto ma boh
-    unsigned int status = term_reg->recv_status;
-    term_reg->recv_command = ACK;
-
+    unsigned int status;
+    int index = 0;
+    if (IntLineNo == 7){
+        termreg_t *term_reg = (termreg_t *)devAddrBase; //salvare status e mandare ACK, leggendo da types.h mi sembra corretto ma boh
+        status = term_reg->recv_status;
+        term_reg->recv_command = ACK; // 4 | 4 | devAddrBase % 0x10 = 0 | 0x08
+    } else {
+        // Gestione generica per dispositivi non terminali
+        dtpreg_t *devReg = (dtpreg_t *) devAddrBase;
+        status = devReg->status;  // Salvataggio dello stato del dispositivo
+        devReg->command = ACK;  // Acknowledge scrivendo ACK nel registro command
+    }
     // verhogen(*statep); //perform a V operation on the Nucleus maintained semaphore associated with this (sub)device.(???)
 
+    pcb_t *toUnblock = removeBlocked(&deviceSemaphores[index]);
     if (toUnblock != NULL) {
-        
-        toUnblock->p_s.reg_a0 = statep; //qua va bene o dovrei usare memcpy?
+        toUnblock->p_s.reg_a0 = status; //qua va bene o dovrei usare memcpy?
         
         insertProcQ(&readyQueue, toUnblock);
     }
@@ -63,22 +68,14 @@ static void LocalTimerInterrupt(state_t *statep) {  //per IL_CPUTIMER
 
     ACQUIRE_LOCK(&globalLock);
 
-    setTIMER(TIMESLICE);  //acknowledge PLT interrupt e reimposta timer
+    setTIMER(TIMESLICE * (*(cpu_t *)TIMESCALEADDR)); // non va
 
     pcb_t *current_pcb = currentProcess[getPRID()];
-
-    if(current_pcb != NULL) {
-        //Copy the processor state of the current CPU at the time of the exception into the Current
-        //Process’s PCB (p_s) of the current CPU.
-        current_pcb->p_s = *statep;
-        //Place the Current Process on the Ready Queue; transitioning the Current Process from the
-        //“running” state to the “ready” state.
-        insertProcQ(&readyQueue, current_pcb);
-
-        currentProcess[getPRID()] = NULL;
-
-    }
-
+        //Calcolo tempo utilizzato
+   // current_process[getPRID()]->p_time += 0;   // calcoliamo il tempo di esecuzione
+    currentProcess[getPRID()]->p_s = *statep;               // copiamo lo stato del processo corrente
+    insertProcQ(&readyQueue, currentProcess[getPRID()]);     // mettiamo il processo corrente nella ready queue
+    currentProcess[getPRID()] = NULL;
     RELEASE_LOCK(&globalLock);
 
     scheduler();    //Call the Scheduler.
@@ -91,24 +88,23 @@ static void SystemWideIntervalTimer(state_t *ExeptionOccurred) {
     //1. Acknowledge the interrupt by loading the Interval Timer with a new value: 100 milliseconds
     //(constant PSECOND). Load the Interval Timer value can be done with the following pre-defined
     //macro LDIT(T).
-    ACQUIRE_LOCK(&globalLock);
     LDIT(PSECOND);
+    ACQUIRE_LOCK(&globalLock);
 
 
     pcb_t *toUnblock;   //2. Unblock all PCBs blocked waiting a Pseudo-clock tick.
 
     while((toUnblock = removeBlocked(&deviceSemaphores[48])) != NULL) {
         insertProcQ(&readyQueue, toUnblock);
-        processCount--;
 
     }
 
     //3. Return control to the Current Process of the current CPU if exists: perform a LDST on the saved
     //exception state of the current CPU.
 
-    if(currentProcess) {
-
-        LDST(ExeptionOccurred);
+    if(currentProcess[getPRID()]) {
+        RELEASE_LOCK(&globalLock);
+        LDST(&currentProcess[getPRID()]->p_s);
 
     } else {
         RELEASE_LOCK(&globalLock);
