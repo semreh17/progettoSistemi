@@ -11,33 +11,55 @@ extern int deviceSemaphores[NRSEMAPHORES];
 extern void klog_print();
 extern void klog_print_dec();
 
-void dev_interrupt_handler(int IntLineNo, state_t *statep) {
+#define BITMAP(IntlineNo) (*(memaddr *)(Cbitmap_BASE + ((IntlineNo) - 3) * WS))
+
+
+
+void dev_interrupt_handler(int cause, state_t *statep) {
+
+
+    int IntlineNo = 0;
+
+    switch (cause)
+    {   
+        case IL_DISK:     IntlineNo = 3; break;
+        case IL_FLASH:    IntlineNo = 4; break;
+        case IL_ETHERNET: IntlineNo = 5; break;
+        case IL_PRINTER:  IntlineNo = 6; break;
+        case IL_TERMINAL: IntlineNo = 7; break;
+
+        default: PANIC();
+    }
 
     devregarea_t *dev_area = (devregarea_t *)RAMBASEADDR; //accesso all'area dei registri dispositivo
 
-    unsigned int dev_bitmap = dev_area->interrupt_dev[IntLineNo - 3];
+    memaddr bitmap = BITMAP(IntlineNo);
 
     unsigned int DevNo; //ricerca di DevNo per priority
-    if (dev_bitmap & DEV7ON) DevNo = 7;
 
-    else if (dev_bitmap & DEV6ON) DevNo = 6;
+    if (bitmap & DEV7ON) DevNo = 7;
 
-    else if (dev_bitmap & DEV5ON) DevNo = 5;
+    else if (bitmap & DEV6ON) DevNo = 6;
 
-    else if (dev_bitmap & DEV4ON) DevNo = 4;
+    else if (bitmap & DEV5ON) DevNo = 5;
 
-    else if (dev_bitmap & DEV3ON) DevNo = 3;
+    else if (bitmap & DEV4ON) DevNo = 4;
 
-    else if (dev_bitmap & DEV2ON) DevNo = 2;
+    else if (bitmap & DEV3ON) DevNo = 3;
 
-    else if (dev_bitmap & DEV1ON) DevNo = 1;
+    else if (bitmap & DEV2ON) DevNo = 2;
+
+    else if (bitmap & DEV1ON) DevNo = 1;
 
     else DevNo = 0;
 
-    memaddr devAddrBase = START_DEVREG + ((IntLineNo - 3) * 0x80) + (DevNo * 0x10); //scritta così nelle spec
+    memaddr devAddrBase = START_DEVREG + ((IntlineNo - 3) * 0x80) + (DevNo * 0x10); //scritta così nelle spec
     unsigned int status;
     int index = 0;
-    if (IntLineNo == 7){
+
+    
+
+    if (IntlineNo == 7){
         termreg_t *term_reg = (termreg_t *)devAddrBase; //salvare status e mandare ACK, leggendo da types.h mi sembra corretto ma boh
         status = term_reg->recv_status;
         term_reg->recv_command = ACK; // 4 | 4 | devAddrBase % 0x10 = 0 | 0x08
@@ -117,7 +139,7 @@ void interruptHandler(int cause, state_t *statep) {
     } else if (cause == IL_CPUTIMER) {
         LocalTimerInterrupt(statep);
     } else {
-        dev_interrupt_handler(IL_TERMINAL, statep);
+        dev_interrupt_handler(cause, statep);
     }
 
     //
