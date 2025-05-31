@@ -8,6 +8,9 @@ extern struct list_head readyQueue;
 extern void scheduler();
 extern int deviceSemaphores[NRSEMAPHORES];
 
+extern void klog_print();
+extern void klog_print_dec();
+
 void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 
     devregarea_t *dev_area = (devregarea_t *)RAMBASEADDR; //accesso all'area dei registri dispositivo
@@ -44,7 +47,7 @@ void dev_interrupt_handler(int IntLineNo, state_t *statep) {
         status = devReg->status;  // Salvataggio dello stato del dispositivo
         devReg->command = ACK;  // Acknowledge scrivendo ACK nel registro command
     }
-    // verhogen(*statep); //perform a V operation on the Nucleus maintained semaphore associated with this (sub)device.(???)
+
 
     pcb_t *toUnblock = removeBlocked(&deviceSemaphores[index]);
     if (toUnblock != NULL) {
@@ -70,7 +73,6 @@ static void LocalTimerInterrupt(state_t *statep) {  //per IL_CPUTIMER
 
     setTIMER(TIMESLICE * (*(cpu_t *)TIMESCALEADDR)); // non va
 
-    pcb_t *current_pcb = currentProcess[getPRID()];
         //Calcolo tempo utilizzato
    // current_process[getPRID()]->p_time += 0;   // calcoliamo il tempo di esecuzione
     currentProcess[getPRID()]->p_s = *statep;               // copiamo lo stato del processo corrente
@@ -84,30 +86,24 @@ static void LocalTimerInterrupt(state_t *statep) {  //per IL_CPUTIMER
 
 
 
-static void SystemWideIntervalTimer(state_t *ExeptionOccurred) {
+static void SystemWideIntervalTimer(state_t *statep) {
     //1. Acknowledge the interrupt by loading the Interval Timer with a new value: 100 milliseconds
     //(constant PSECOND). Load the Interval Timer value can be done with the following pre-defined
     //macro LDIT(T).
     LDIT(PSECOND);
+    // *((cpu_t *)INTERVALTMR) = PSECOND;
     ACQUIRE_LOCK(&globalLock);
-
-
-    pcb_t *toUnblock;   //2. Unblock all PCBs blocked waiting a Pseudo-clock tick.
-
+    pcb_t *toUnblock = NULL;   //2. Unblock all PCBs blocked waiting a Pseudo-clock tick.
     while((toUnblock = removeBlocked(&deviceSemaphores[48])) != NULL) {
         insertProcQ(&readyQueue, toUnblock);
-
     }
-
     //3. Return control to the Current Process of the current CPU if exists: perform a LDST on the saved
     //exception state of the current CPU.
 
-    if(currentProcess[getPRID()]) {
-        RELEASE_LOCK(&globalLock);
-        LDST(&currentProcess[getPRID()]->p_s);
-
+    RELEASE_LOCK(&globalLock);
+    if(currentProcess[getPRID()] != NULL) {
+        LDST(statep);
     } else {
-        RELEASE_LOCK(&globalLock);
         scheduler();
     }
 }
@@ -115,26 +111,36 @@ static void SystemWideIntervalTimer(state_t *ExeptionOccurred) {
 
 void interruptHandler(int cause, state_t *statep) {
 
-    if (CAUSE_IP_GET(cause, IL_DISK))
-        dev_interrupt_handler(IL_DISK, statep);
-
-    else if (CAUSE_IP_GET(cause, IL_FLASH))
-        dev_interrupt_handler(IL_FLASH, statep);
-
-    else if (CAUSE_IP_GET(cause, IL_ETHERNET))
-        dev_interrupt_handler(IL_ETHERNET, statep);
-
-    else if (CAUSE_IP_GET(cause, IL_PRINTER))
-        dev_interrupt_handler(IL_PRINTER, statep);
-
-    else if (CAUSE_IP_GET(cause, IL_TERMINAL))
-        dev_interrupt_handler(IL_TERMINAL, statep);
-
-    else if (CAUSE_IP_GET(cause, IL_CPUTIMER))
-        LocalTimerInterrupt(statep);
-
-    else if (CAUSE_IP_GET(cause, IL_TIMER))
+    if (cause == IL_TIMER) {
+        klog_print("il dio bestia");
         SystemWideIntervalTimer(statep);
+    } else if (cause == IL_CPUTIMER) {
+        LocalTimerInterrupt(statep);
+    } else {
+        dev_interrupt_handler(IL_TERMINAL, statep);
+    }
 
-    //else ERROR(?)
+    //
+    // if (CAUSE_IP_GET(cause, IL_DISK))
+    //     dev_interrupt_handler(IL_DISK, statep);
+    //
+    // else if (CAUSE_IP_GET(cause, IL_FLASH))
+    //     dev_interrupt_handler(IL_FLASH, statep);
+    //
+    // else if (CAUSE_IP_GET(cause, IL_ETHERNET))
+    //     dev_interrupt_handler(IL_ETHERNET, statep);
+    //
+    // else if (CAUSE_IP_GET(cause, IL_PRINTER))
+    //     dev_interrupt_handler(IL_PRINTER, statep);
+    //
+    // else if (CAUSE_IP_GET(cause, IL_TERMINAL))
+    //     dev_interrupt_handler(IL_TERMINAL, statep);
+    //
+    // else if (CAUSE_IP_GET(cause, IL_CPUTIMER))
+    //     LocalTimerInterrupt(statep);
+    //
+    // else if (cause == IL_TIMER) {
+    //     klog_print("LE BANANE");
+    //     SystemWideIntervalTimer(statep);
+    // }
 }
