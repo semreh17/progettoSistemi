@@ -89,26 +89,34 @@ int main() {
 
     // 7.
     // vengono assegnati 6 registri a ogni CPU
-      for (int i = 0; i < IRT_NUM_ENTRY; i++) {
-            int cpucounter = (i / (IRT_NUM_ENTRY / NCPU)) % NCPU;
-            configureIRT(i, cpucounter);
-      }
+    unsigned int bits = 0;
+    for (int cpu = 0; cpu < NCPU; cpu++)
+        bits += (1 << cpu);
+    for (int i = 0; i < IRT_NUM_ENTRY; i++) {
+        memaddr entry = IRT_START + i*WS;
+        *((memaddr *)entry) = 0; // just to be sure that the entry is 0 before initializing it
+        *((memaddr *)entry) |= IRT_RP_BIT_ON;
+        *((memaddr *)entry) |= bits;
+    }
+
+    *((memaddr *)TPR) = 0;
     klog_print("registri gas\n");
 
     // 8.
+    state_t stato;
+    stato.status = MSTATUS_MPP_M;
+    stato.pc_epc = (memaddr) scheduler;
+    stato.entry_hi = 0;
+    stato.cause = 0;
+    stato.mie = 0;
+
     for (int i = 1; i < NCPU; i++) {
-        currentProcess[i]->p_s.status = MSTATUS_MPP_M;
-        currentProcess[i]->p_s.pc_epc = (memaddr)scheduler;
-        currentProcess[i]->p_s.reg_sp = 0x20020000 + (i * PAGESIZE);
-        currentProcess[i]->p_s.mie = 0;
-        for (int j = 0; j < STATE_GPR_LEN; j++) {
-            currentProcess[i]->p_s.gpr[j] = 0;
-        }
-        currentProcess[i]->p_s.cause = 0;
-        currentProcess[i]->p_s.entry_hi = 0;
-        // TODO: fixare la concorrenza, a quanto pare nel mentre che li inizializzo i processi partono a fare robe prima ancora che venga chiamato lo scheduler
-        INITCPU(i, &currentProcess[i]->p_s.status);
+        stato.reg_sp = (0x20020000 + (i * PAGESIZE));
+        INITCPU(i, &stato);
     }
+
+    if (currentProcess[0] != NULL) klog_print(" PROCESSO NON VUOTO ");
+
     klog_print("SCHEDULER TUTTO OK\n");
     scheduler();
 

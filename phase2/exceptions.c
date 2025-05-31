@@ -13,6 +13,7 @@ extern void interruptHandler(int cause, state_t *statep);
 
 extern void klog_print();
 extern void klog_print_dec();
+extern void klog_print_hex();
 
 void *memcpy(void *dest, const void *src, unsigned int n)
 {
@@ -22,49 +23,63 @@ void *memcpy(void *dest, const void *src, unsigned int n)
     }
 }
 
-// questa probably è rotta NON TROVA IL PROCESSOoooooooooOOOoOOOOOo
+// questa probably è rotta
 
 void recursiveKiller(pcb_t *p, unsigned int location) {
-
     klog_print(" ADESSO DO DI MATTO CAZZO ");
 
     if (p == NULL) {
         klog_print(" processo mancante? ");
         return;
     }
-    // rendo orfani i processi figli
+
+    // Rendo orfani i figli con outChild e poi chiamata ricorsiva
     while (!emptyChild(p)) {
-        pcb_t *child = container_of(&p->p_child, pcb_t, p_list);
+        pcb_t *child = removeChild(p);
         outChild(child);
         recursiveKiller(child, location);
     }
-    // c'è da uccidere il processo a tutti gli effetti
-    // teoricamente mi basta togliere ogni tipo di riferimento al processo, di conseguenza nulla lo punterà più
+
     unsigned int processorID = getPRID();
+
     switch (location) {
         case INCURRENTPROCESS:
             klog_print(" processore corrente ");
+            // TODO: not so sure di questa, accertarsi se effettivamente si debba fare la outProcQ sul quella lista
             outProcQ(&currentProcess[processorID]->p_list, p);
-        break;
+            currentProcess[processorID] = NULL;
+            break;
         case ONREADYQUEUE:
             klog_print(" ready queue ");
             outProcQ(&readyQueue, p);
-        break;
+            break;
         case BLOCKEDONASEM:
             klog_print(" su un mrda di semaforo");
+            // mi salvo il semaforo e dopo aver tolto il processo bloccato, incremento il semaforo
+            int *semAddr = p->p_semAdd;
             outBlocked(p);
-        break;
+            (*semAddr)++;
+            break;
         default:
             break;
     }
-    processCount--;
+
+    freePcb(p);
     klog_print(" xxxxx ");
+    klog_print_dec(p->p_pid);
+    processCount--;
 }
 
-
+// scheduler riparte non trova nessun processo da schedulare e rientra di nuovo in passUpOrDie e il ciclo si ripete
 void passUpOrDie(state_t *statep, int exceptIndex) {
     ACQUIRE_LOCK(&globalLock);
     int ppid = getPRID();
+
+    if (currentProcess[ppid] == NULL) {
+        RELEASE_LOCK(&globalLock);
+        scheduler();
+    }
+
     if (currentProcess[ppid]->p_supportStruct == NULL) {
         klog_print_dec(processCount);
         // qui chiama recursiveKiller ma in currentProcess non c'è nessun processo attivo
@@ -80,78 +95,6 @@ void passUpOrDie(state_t *statep, int exceptIndex) {
     RELEASE_LOCK(&globalLock);
     klog_print(" ziocan ");
     scheduler();
-}
-
-void handleInterrupt(state_t* statep, int exceptCode) {
-    int core_id = getPRID();
-    state_t *exc_state = statep;
-    unsigned int exc_code = exceptCode;
-
-    ACQUIRE_LOCK(&globalLock);
-
-    // 1. Process Local Timer (PLT) - Codice 7 (IL_CPUTIMER)
-    if (exc_code == IL_CPUTIMER) {
-
-        if (currentProcess[core_id]) {
-            // Salva stato corrente nel PCB
-            currentProcess[core_id]->p_s = *exc_state;
-            // TODO: CAMBIARE IL MEMCPY CON L'UGUALE
-            memcpy(&currentProcess[core_id]->p_s, exc_state, sizeof(state_t));
-
-            // Aggiorna tempo CPU usando campo p_time esistente
-            cpu_t now;
-            STCK(now);
-            currentProcess[core_id]->p_time += (now - *((cpu_t *)TODLOADDR)) / (*((cpu_t *)TIMESCALEADDR));
-            
-            // Reinserisce in ready queue
-            insertProcQ(&readyQueue, currentProcess[core_id]);
-            currentProcess[core_id] = NULL;
-        }
-        
-        // Resetta timer e chiama scheduler
-        setTIMER(TIMESLICE * (*((cpu_t *)TIMESCALEADDR)));
-        RELEASE_LOCK(&globalLock);
-        scheduler();
-    }
-    
-    // 2. Interval Timer - Codice 3 (IL_TIMER)
-    if (exc_code == IL_TIMER) {
-        klog_print(" timer ");
-        // Resetta timer a 100ms (PSECOND)
-        *((cpu_t *)INTERVALTMR) = PSECOND;
-        
-        // Sblocca processi in attesa usando SEMDEVLEN-1 come ID
-        pcb_t *unblocked;
-        while ((unblocked = removeBlocked(&deviceSemaphores[SEMDEVLEN-1])) != NULL) {
-            insertProcQ(&readyQueue, unblocked);
-        }
-        
-        RELEASE_LOCK(&globalLock);
-        LDST(&currentProcess[core_id]->p_s);
-    }
-    // 3. Interrupt I/O - Codici 17-21 (IL_DISK a IL_TERMINAL)
-    if (exc_code >= IL_DISK && exc_code <= IL_TERMINAL) {
-        klog_print(" disk ");
-        int dev_line = exc_code - IL_DISK + 3;
-        int *dev_addr = (int *)(START_DEVREG + (dev_line-3)*0x80);
-        
-        // Acknowledge interrupt
-        *dev_addr = RECEIVEMSG;
-        
-        // Sblocca processo in attesa
-        pcb_t *unblocked = removeBlocked(dev_addr);
-        if (unblocked) {
-            unblocked->p_s.gpr[4] = *dev_addr; // a0 = status
-            insertProcQ(&readyQueue, unblocked);
-        }
-        
-        RELEASE_LOCK(&globalLock);
-        LDST(&currentProcess[core_id]->p_s);
-        return;
-    }
-    
-    RELEASE_LOCK(&globalLock);
-    PANIC();
 }
 
 void terminateProcess(state_t *statep) {
@@ -192,6 +135,10 @@ void terminateProcess(state_t *statep) {
         // BLOCKED ON A SEMAPHORE
         if (toTerminate == NULL) {
             toTerminate = outBlockedPid(pid);
+
+
+            *toTerminate->p_semAdd++;
+
             recursiveKiller(toTerminate, BLOCKEDONASEM);
             // PCB TROVATOOOOOOOO
         }
@@ -361,92 +308,73 @@ void createProcess(state_t *statep) {
 }
 
 void exceptionHandler() {
+    if (currentProcess[0] != NULL) klog_print(" PROCESSO NON VUOTO  AAAAAAA");
+
     int core_id = getPRID();  //funzione strana di uriscv per prendere l'ID del core
     state_t *exc_state = GET_EXCEPTION_STATE_PTR(core_id);    // Prendiamo lo stato del processo che ha generato l'eccezione
     unsigned int cause = getCAUSE(); //funzione di uriscv per prendere la causa dell'eccezione
-
     int exc_code = cause & CAUSE_EXCCODE_MASK; //CAUSE_EXCCODE_MASK è una maschera per prendere i bit 0-5 della causa dell'eccezione
 
-    if (CAUSE_IS_INT(exc_state->cause)) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
+    if (CAUSE_IS_INT(getCAUSE())) {    //controlla solo il bit più significativo (bit 31), se 1 interrupt se 0 eccezione
         interruptHandler(exc_code, exc_state);
-        return;
-    }
+    } else {
+        if (exc_code >= 24 && exc_code <= 28) {
+            klog_print("caso da 24 a 28");
+            passUpOrDie(exc_state, PGFAULTEXCEPT);
+        } else if (exc_code == 8 || exc_code == 11) {
+            // controllo delle systemCall con numeri maggiori di 0
+            int syscall_num = exc_state->reg_a0;
+            if (syscall_num > 0) {
+                klog_print("NUMERO SYSCALL POSITIVO");
+                passUpOrDie(exc_state, GENERALEXCEPT);
+            }
 
-    switch(exc_code) {
-    case 0 ... 7:
-        // ENTRA IN LOOP QUA DENTRO
-        klog_print(" caso da 0 a 7 ");
-        passUpOrDie(exc_state, GENERALEXCEPT);
-        break;
-    case 9 ... 10:
-        klog_print("caso da 0 a 9");
-        passUpOrDie(exc_state, GENERALEXCEPT);
-        break;
-    case 8:  // SYSCALL
-    case 11: // SYSCALL
-        // handleSyscall(exc_state);  // il gestore di syscall
-        // controllo delle systemCall con numeri maggiori di 0
-        int syscall_num = exc_state->reg_a0;
-        if (syscall_num > 0) {
-            klog_print("NUMERO SYSCALL POSITIVO");
-            passUpOrDie(exc_state, GENERALEXCEPT);
-            break;
+            //TODO: CONTROLLARE SE IL PROCESSO È IN USER O KERNEL MODE
+
+            switch (syscall_num) {
+                case CREATEPROCESS: {  // -1
+                    createProcess(exc_state);
+                    break;
+                }
+                case TERMPROCESS:    // -2
+                    klog_print(" il dio bestia ");
+                    terminateProcess(exc_state);
+                    break;
+
+                case PASSEREN:       // -3
+                    passeren(exc_state);
+                    break;
+
+                case VERHOGEN:       // -4
+                    verhogen(exc_state);
+                    break;
+
+                case DOIO:           // -5
+                    doIO(exc_state);
+                    break;
+
+                case GETTIME:        // -6
+                    getCPUTime(exc_state);
+                    break;
+
+                case CLOCKWAIT:      // -7
+                    waitForClock(exc_state);
+                    break;
+
+                case GETSUPPORTPTR:  // -8
+                    getSupportData(exc_state);
+                    break;
+
+                case GETPROCESSID:   // -9
+                    getProcessID(exc_state);
+                    break;
+
+                default:
+                    PANIC();  // Syscall non riconosciuta
+                    return;
+            }
+        } else if ((exc_code >= 0 && exc_code <= 7) || exc_code == 9 || exc_code == 10 || (exc_code >= 12 && exc_code <= 23)) {
+            passUpOrDie(exc_state, GENERALEXCEPT); // passUpOrDie for general exception
         }
-        switch (syscall_num) {
-        case CREATEPROCESS: {  // -1
-            createProcess(exc_state);
-            break;
-        }
-        case TERMPROCESS:    // -2
-            klog_print(" il dio bestia ");
-            terminateProcess(exc_state);
-            break;
-
-        case PASSEREN:       // -3
-            passeren(exc_state);
-            break;
-
-        case VERHOGEN:       // -4
-            verhogen(exc_state);
-            break;
-
-        case DOIO:           // -5
-            doIO(exc_state);
-            break;
-
-        case GETTIME:        // -6
-            getCPUTime(exc_state);
-            break;
-
-        case CLOCKWAIT:      // -7
-            waitForClock(exc_state);
-            break;
-
-        case GETSUPPORTPTR:  // -8
-            getSupportData(exc_state);
-            break;
-
-        case GETPROCESSID:   // -9
-            getProcessID(exc_state);
-            break;
-
-        default:
-            PANIC();  // Syscall non riconosciuta
-            return;
-    }
-        break;
-    case 12 ... 23:
-        klog_print("caso da 12 a 23");
-        passUpOrDie(exc_state, GENERALEXCEPT);
-        break;
-    case 24 ... 28:
-        klog_print("caso da 24 a 28");
-        passUpOrDie(exc_state, PGFAULTEXCEPT);
-        break;
-
-    default: // tutto gli altri casi (Program Trap)
-        klog_print("PROGRAMTRAP i guess");
-        passUpOrDie(exc_state, GENERALEXCEPT);
-        break;
     }
 }

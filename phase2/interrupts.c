@@ -11,6 +11,9 @@ extern int deviceSemaphores[NRSEMAPHORES];
 extern void klog_print();
 extern void klog_print_dec();
 
+// TODO: CONTROLLARE LA GESTIONE DEI DEVICE
+// uno dei processori a quanto pare entra in loop dentro il dev interrupt bah
+
 void dev_interrupt_handler(int IntLineNo, state_t *statep) {
 
     devregarea_t *dev_area = (devregarea_t *)RAMBASEADDR; //accesso all'area dei registri dispositivo
@@ -52,12 +55,12 @@ void dev_interrupt_handler(int IntLineNo, state_t *statep) {
     pcb_t *toUnblock = removeBlocked(&deviceSemaphores[index]);
     if (toUnblock != NULL) {
         toUnblock->p_s.reg_a0 = status; //qua va bene o dovrei usare memcpy?
-        
+
         insertProcQ(&readyQueue, toUnblock);
     }
 
 
-    if (currentProcess[getPRID()]) {
+    if (currentProcess[getPRID()] != NULL) {
         LDST(statep);
     } else {
         scheduler();
@@ -85,13 +88,14 @@ static void LocalTimerInterrupt(state_t *statep) {  //per IL_CPUTIMER
 }
 
 
-
 static void SystemWideIntervalTimer(state_t *statep) {
     //1. Acknowledge the interrupt by loading the Interval Timer with a new value: 100 milliseconds
     //(constant PSECOND). Load the Interval Timer value can be done with the following pre-defined
     //macro LDIT(T).
     LDIT(PSECOND);
     // *((cpu_t *)INTERVALTMR) = PSECOND;
+    if (currentProcess[0] != NULL) klog_print(" PROCESSO NON VUOTO xxxxx");
+
     ACQUIRE_LOCK(&globalLock);
     pcb_t *toUnblock = NULL;   //2. Unblock all PCBs blocked waiting a Pseudo-clock tick.
     while((toUnblock = removeBlocked(&deviceSemaphores[48])) != NULL) {
@@ -104,6 +108,7 @@ static void SystemWideIntervalTimer(state_t *statep) {
     if(currentProcess[getPRID()] != NULL) {
         LDST(statep);
     } else {
+        klog_print(" dentro l'else  ");
         scheduler();
     }
 }
@@ -120,27 +125,4 @@ void interruptHandler(int cause, state_t *statep) {
         dev_interrupt_handler(IL_TERMINAL, statep);
     }
 
-    //
-    // if (CAUSE_IP_GET(cause, IL_DISK))
-    //     dev_interrupt_handler(IL_DISK, statep);
-    //
-    // else if (CAUSE_IP_GET(cause, IL_FLASH))
-    //     dev_interrupt_handler(IL_FLASH, statep);
-    //
-    // else if (CAUSE_IP_GET(cause, IL_ETHERNET))
-    //     dev_interrupt_handler(IL_ETHERNET, statep);
-    //
-    // else if (CAUSE_IP_GET(cause, IL_PRINTER))
-    //     dev_interrupt_handler(IL_PRINTER, statep);
-    //
-    // else if (CAUSE_IP_GET(cause, IL_TERMINAL))
-    //     dev_interrupt_handler(IL_TERMINAL, statep);
-    //
-    // else if (CAUSE_IP_GET(cause, IL_CPUTIMER))
-    //     LocalTimerInterrupt(statep);
-    //
-    // else if (cause == IL_TIMER) {
-    //     klog_print("LE BANANE");
-    //     SystemWideIntervalTimer(statep);
-    // }
 }
